@@ -1,0 +1,24 @@
+# ローカル設定
+CLAUDE.local.md
+CLAUDE.local.md.*
+.ccpit/
+.claude/settings.local.json
+
+# 提供を受けた実データとその変換結果（外に出さない）
+*.MBD
+*.mbd
+*.MES/
+*.mes/
+_test_fixtures/
+out/
+scratch/
+
+# バックアップ・生成物
+*.bak
+*.bak.*
+*.corrupt_*
+__pycache__/
+build/
+dist/
+/release/*
+!/release/README.md
