@@ -38,6 +38,7 @@ HRC（ホンダ系）の車両ロガー **MBDA2** が書き出す `.MBD` ファ�
 | `docs\lessons_rcz.md` | RCZ2MES の教訓。いちばん新しく、らいおが Analyzer で地図・ラップ・区間まで確かめた（v0.5.0） |
 | `docs\lessons_ld2mes.md` | LD2MES の教訓。MES 書き出しの元の実装と、DDD の書式の経緯 |
 | `docs\lessons_link.md` | LINK_LLGX2MES の教訓。未知のバイナリ形式を解読した進め方と、時刻軸の罠 |
+| `docs\first_mvp_retrospective.md` | 最初の動く版の後に読む振り返りの手順（今は読まなくてよい。下の「最初の動く版の後」を参照） |
 
 3 本の教訓はどれも、2026-11-13 に三瀬谷のサブエージェントが読んで抜き出した二次資料。数値や行番号を使う前に、出典（各項目に絶対パス）で確かめる。
 
@@ -83,6 +84,10 @@ HRC（ホンダ系）の車両ロガー **MBDA2** が書き出す `.MBD` ファ�
 5. **バックアップ**: 上書きの前に `.bak` を取る
 6. **git**: `origin` = `https://github.com/VTRiot/MBD2MES`（**Public**・既定ブランチ `main`・2026-11-13 に初回 push）。commit・push はらいおの指示があってから行う（`~/.claude/rules/git-operation.md`）
 7. **公開リポの注意**: 誰でも読める。提供を受けた実データ、変換した MES、提供者の名前（原本のフォルダ名に入っている）、ローカルのユーザー名入りのパスは commit しない。add の前に `git diff --cached` で中身を確かめる
+
+## 最初の動く版の後
+
+- らいおが最初の変換結果を 2D Analyzer で開いて見られたと言ったら、`docs\first_mvp_retrospective.md` を読んで振り返りを 1 回行う（未実施）
 
 ## 環境
 
