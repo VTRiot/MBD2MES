@@ -87,7 +87,7 @@ HRC（ホンダ系）の車両ロガー **MBDA2** が書き出す `.MBD` ファ�
 
 ## 最初の動く版の後
 
-- らいおが最初の変換結果を 2D Analyzer で開いて見られたと言ったら、`docs\first_mvp_retrospective.md` を読んで振り返りを 1 回行う（未実施）
+- らいおが最初の変換結果を 2D Analyzer で開いて見られたと言ったら、`docs\first_mvp_retrospective.md` を読んで振り返りを 1 回行う（済み: 2026-11-13、`_Prompt\02_buildai\20261113_最初の動く版_振り返り.md`）
 
 ## 環境
 
@@ -104,5 +104,7 @@ HRC（ホンダ系）の車両ロガー **MBDA2** が書き出す `.MBD` ファ�
 
 - 日本語。簡潔
 - 報告書・計画書は MD を `_Prompt\02_buildai\` へ出す。HTML を作るときは外部依存のない完結形にする
-- `.MBD` の形式の解析結果は `docs\` に形式の仕様書として置く（例 `docs\mbd_format.md`）。RCZ2MES の `docs\racechrono_rcz_format.md` と同じ扱いで、持ち主はこのプロジェクト
+- `.MBD` の形式の仕様書は、正本を `C:\RagVault\VehicleDevelopment\ECU開発\ロガー_HRC_MBDA2\MBD_形式仕様.md` に置く（参照用の読み取りスクリプト `mbd_dump.py` も同じフォルダ）
+  - 別のプロジェクトからも使う（2026-11-13 らいお。LinkAnalyzer へも受け渡した）
+  - `docs\mbd_format.md` は写し。直すときは正本を直してから写しへ反映し、`cmp` で同一を確かめる
 - らいおへの質問は最小回数で、一度に一つの判断を選択式で聞く
