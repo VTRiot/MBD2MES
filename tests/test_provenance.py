@@ -20,7 +20,8 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def test_table_lists_the_eight_copied_files():
+def test_table_lists_the_copied_files():
+    """最初の 8 本（M1）。FB01 の race_env.py は直した版なので、ここには載せず test_provenance_app が確かめる。"""
     names = {r[0] for r in _rows()}
     assert names == {f"mbd2mes/{n}" for n in (
         "mes_reader.py", "mes_writer.py", "ddd_generator.py", "ddd_invariants.py",

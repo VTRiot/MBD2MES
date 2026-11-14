@@ -22,12 +22,15 @@ import numpy as np
 
 from . import channels as chmod
 from . import ddd_generator as dg
+from . import channel_map as cmapmod
+from . import dates
 from . import ddd_invariants as di
 from . import event_ini
 from . import gps_entries as ge
 from . import hed_download
 from . import lap_files
 from . import laps as lapmod
+from . import map_rules
 from . import mes_writer as mw
 from . import timeline as tl
 from .mbd_reader import SECONDS_PER_DAY, TICK_MS, MbdError, MbdFile, read_mbd
@@ -62,6 +65,7 @@ class ChannelRecord:
     bits: int
     source: str
     lead_samples: int = 0  # 最初のレコードより前（最初の値で埋めた標本数）
+    map_note: str = ""  # 対応表が効いた行の説明（効いていなければ空。記録ファイルの行に足す）
 
 
 @dataclass
@@ -81,6 +85,8 @@ class ConvertResult:
     lap_file_names: list[str]
     input_path: Path
     input_sha256: str
+    map_saved: bool = True  # 対応表の自動成長を保存できたか（保存の必要が無ければ True）
+    map_applied: list[str] = field(default_factory=list)  # 対応表が効いた行の説明（空 = 恒等）
 
 
 class ArraySource:
@@ -103,11 +109,11 @@ def sanitize_mes_name(stem: str) -> str:
 
 
 def recording_start_ms(utc0_s: float | None, duration_s: float, date: datetime.date | None, mtime_s: float,
-                       offset_min: int = hed_download.JST_OFFSET_MIN) -> tuple[int, str]:
+                       offset_min: int = hed_download.JST_OFFSET_MIN, label: str = "--date") -> tuple[int, str]:
     """tick 0 の時刻（UTC の Unix ms）と、その決め方の説明。
 
     日付は MBD の中に無い（docs/mbd_format.md §2）。時刻（UTC の時分秒）は GPS から取る。
-      date 指定あり : date は現地（offset_min）の日付。GPS の時刻と組み合わせる
+      date 指定あり : date は現地（offset_min）の日付。GPS の時刻と組み合わせる（label = 日付の出どころ: --date・date field・file name）
       date なし     : 入力ファイルの更新時刻（記録の終わり付近のはず）に最も近い日を選ぶ
       GPS なし      : 更新時刻 - 記録の長さ
     """
@@ -119,7 +125,7 @@ def recording_start_ms(utc0_s: float | None, duration_s: float, date: datetime.d
         if local_tod >= SECONDS_PER_DAY:
             local_tod -= SECONDS_PER_DAY  # date は現地の日付のまま（記録は現地の同じ日の中に収まるとみなす）
         local_epoch = (date - UNIX_EPOCH).days * SECONDS_PER_DAY + local_tod
-        return int(round((local_epoch - offset_min * SECONDS_PER_MINUTE) * 1000)), f"--date {date.isoformat()} (local) + GPS time of day"
+        return int(round((local_epoch - offset_min * SECONDS_PER_MINUTE) * 1000)), f"{label} {date.isoformat()} (local) + GPS time of day"
     base_day = int(mtime_s // SECONDS_PER_DAY)
     best = min((d for d in (base_day + k for k in DAY_SEARCH)),
                key=lambda d: abs(d * SECONDS_PER_DAY + tod + duration_s - mtime_s))
@@ -128,7 +134,7 @@ def recording_start_ms(utc0_s: float | None, duration_s: float, date: datetime.d
 
 def _build_record(res_input: Path, sha: str, mbd: MbdFile, name: str, t0_ms: int, start_source: str, start_local: str,
                   span_ms: int, base_hz: int, records: list[ChannelRecord], skipped, warnings, utc0_s, gps_info: str,
-                  plan: lapmod.LapPlan | None, violations: list[str]) -> str:
+                  plan: lapmod.LapPlan | None, violations: list[str], map_applied: list[str] | None = None) -> str:
     L = ["MBD2MES record", f"Input: {res_input}", f"Input SHA-256: {sha}", f"MBD version: {mbd.version}  course: {mbd.course}",
          f"MES name: {name}", f"Variant: {VARIANT}",
          f"t0: {t0_ms} ms (UTC {datetime.datetime.fromtimestamp(t0_ms / tl.MS_PER_S, tz=datetime.timezone.utc).isoformat(timespec='milliseconds')})",
@@ -139,7 +145,10 @@ def _build_record(res_input: Path, sha: str, mbd: MbdFile, name: str, t0_ms: int
           gps_info, f"Channels written: {len(records)}"]
     for c in records:
         lead = f" | first {c.lead_samples} samples hold the first value" if c.lead_samples else ""
-        L.append(f"  {c.name} | {c.unit or '-'} | {c.rate} Hz | divisor {c.divisor} | {c.samples} samples | {c.bits} bit | {c.source}{lead}")
+        L.append(f"  {c.name} | {c.unit or '-'} | {c.rate} Hz | divisor {c.divisor} | {c.samples} samples | {c.bits} bit | {c.source}{c.map_note}{lead}")
+    if map_applied:  # 対応表が実際に効いたときだけ（恒等のときは記録ファイルも変えない）
+        L.append(f"Channel map applied: {len(map_applied)}")
+        L += [f"  {x}" for x in map_applied]
     if mbd.warnings or warnings:
         L.append(f"Warnings: {len(mbd.warnings) + len(warnings)}")
         L += [f"  {w}" for w in mbd.warnings + warnings]
@@ -165,7 +174,16 @@ def _build_record(res_input: Path, sha: str, mbd: MbdFile, name: str, t0_ms: int
 
 
 def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool = False,
-                date: datetime.date | None = None, log=None) -> ConvertResult:
+                date: datetime.date | None = None, channel_map_data: dict | None = None, log=None,
+                before_replace=None, date_label: str = "--date") -> ConvertResult:
+    """MBD 1 本から MES 1 本を作る。GUI・CLI（D&D を含む）はすべてこの関数を通る。
+
+    channel_map_data は対応表（channel_map の辞書）。None なら表を使わない（恒等。今までと同じ結果）。
+    表を渡すと、改名・単位・一次変換（値 x Multiplier + Offset。MBD の換算の後）・任意名のコピーが効き、変換の後に未登録の行を自動で足す。
+    表の検証（倍率・単位の整合性）は、出力先の確認・作成より前に終わる（失敗したら何も作らない）。
+    before_replace(final_dir) は省略できるフック（一発変換のガード）。MES を公開する直前に呼ぶ。例外を投げると公開せず
+    （既存の MES はそのまま・作業フォルダは finally で消える）、その例外がそのまま出る。None なら何もしない。
+    """
     log = log or (lambda _t: None)
     mbd_path, out_dir = Path(mbd_path), Path(out_dir)
     mbd = read_mbd(mbd_path)
@@ -178,6 +196,9 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
 
     var = ge.get_variant(VARIANT)
     name_lat, name_lon, name_spd = (var.rename[k] for k in ("Lat_dez", "Lon_dez", "V_Sat"))
+    if channel_map_data is not None:
+        for text in map_rules.protected_warnings(channel_map_data):
+            warn(text)
     span_ms = mbd.duration_ms
     plans, skipped, chan_warnings = chmod.plan_channels(mbd)
     for w in chan_warnings:
@@ -225,32 +246,68 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
         raise ConvertError("no channel can be written (all channels are empty)")
 
     source = ArraySource(narrow_rows)
-    result = dg.build_entries(source, mbd_path)
+    calls: list = []  # 呼ばれた順の (生の名前, 残した [(名前, 単位)], 各候補が任意名のコピーか)。entry と元の行の対応を作る
+    dropped: list[tuple[str, str]] = []  # cp1252 で書けず、build_entries の前に外した候補
+    scale_fn = map_rules.make_scaling_fn(channel_map_data)
+    result = dg.build_entries(source, mbd_path, apply_map_fn=map_rules.make_apply_fn(channel_map_data, calls, dropped),
+                              get_scaling_fn=scale_fn)
     entries = list(result.entries)
     values_by_name = dict(result.values_by_name)
     base_hz = result.base_hz
     if base_hz != tl.BASE_HZ:
         raise ConvertError(f"base Hz {base_hz} differs from the fixed {tl.BASE_HZ}; a channel rate does not divide it")
-    if len(entries) != len(narrow_rows):
-        raise ConvertError(f"build_entries wrote {len(entries)} of {len(narrow_rows)} channels: {result.skipped}")
+    if len(calls) != len(narrow_rows):
+        raise ConvertError(f"build_entries accepted {len(calls)} of {len(narrow_rows)} channels: {result.skipped}")
     skipped_gen = list(result.skipped)
-    for row, e in zip(narrow_rows, entries):
-        if e.name != row[0]:
-            warn(f"[WARN] channel name {row[0]!r} was written as {e.name!r}")
-    layout = list(zip(entries, narrow_rows, narrow_src, narrow_lead))
+    skipped_gen += [(cand, f"Name cannot be encoded in cp1252 (channel map; row {raw})") for raw, cand in dropped]
+
+    # entry と元の行の対応: build_entries は行の順に、残した候補の順で entry を作る（make_apply_fn が候補を絞り済み）
+    layout: list = []
+    map_applied: list[str] = []
+    k = 0
+    for (raw_name, kept, is_copy), row, src, lead in zip(calls, narrow_rows, narrow_src, narrow_lead):
+        _nm, unit, rate, values = row
+        m, o = scale_fn(raw_name)
+        scaled = m != 1.0 or o != 0.0
+        for (cand_name, cand_unit), copy in zip(kept, is_copy):
+            if k >= len(entries):
+                raise ConvertError(f"build_entries wrote {len(entries)} entries, fewer than the {len(layout) + 1}th expected: {result.skipped}")
+            e = entries[k]
+            k += 1
+            if e.divisor != base_hz // rate or values_by_name[e.name].shape != values.shape:
+                raise ConvertError(f"entry {e.name!r} does not match its source row {raw_name!r} (divisor/length)")
+            if e.name != cand_name:
+                warn(f"[WARN] channel name {cand_name!r} was written as {e.name!r}")
+            notes = []
+            if copy:
+                notes.append(f"copy of {raw_name} (custom name)")
+            elif cand_name != raw_name:
+                notes.append("renamed")  # 元の候補の名前は apply_channel_map が変えないので通常は起きない
+            if cand_unit != unit.strip():
+                notes.append(f"unit {cand_unit!r}")
+            if scaled:
+                notes.append(f"x{m!r}+{o!r}")
+            note = f" [map: {', '.join(notes)}]" if notes else ""
+            if note:
+                map_applied.append(f"{e.name}: {', '.join(notes)}")
+            layout.append((e, (e.name, unit, rate, values), src, lead, note))
+    if k != len(entries):
+        raise ConvertError(f"build_entries wrote {len(entries)} entries, expected {k}: {result.skipped}")
     for nm, unit, rate, values in wide_rows:
         if nm in values_by_name:
             raise ConvertError(f"channel name {nm!r} is duplicated")
         entry = ge.make_wide_entry(len(entries) + 1, nm, unit, values, rate, base_hz, skipped_gen)
         entries.append(entry)
         values_by_name[nm] = values
-        layout.append((entry, (nm, unit, rate, values), "GPS block position (1/6,000,000 deg units)", 0))
+        layout.append((entry, (nm, unit, rate, values), "GPS block position (1/6,000,000 deg units)", 0, ""))
     skipped.extend(skipped_gen)
     ge.apply_marks(entries, var.marks)
 
     # ---- 開始日時
     mtime_s = mbd_path.stat().st_mtime
-    t0_ms, start_source = recording_start_ms(utc0, span_ms / tl.MS_PER_S, date, mtime_s)
+    t0_ms, start_source = recording_start_ms(utc0, span_ms / tl.MS_PER_S, date, mtime_s, label=date_label)
+    if date is None:  # 日付の手がかりが無く、更新時刻に頼った（レースの日と違うかもしれない）。黙らず警告する
+        warn(dates.mtime_warning(mbd_path.name))
     start_local = hed_download.start_text(t0_ms)
 
     # ---- 書き出し先
@@ -273,11 +330,13 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
         violations = di.check_ddd_invariants(staged / f"{name}.DDD", staged, name)
         if violations:
             raise InvariantViolationError(violations)
-        records = [ChannelRecord(e.name, e.unit, rate, e.divisor, len(values), e.bit_width, src, lead)
-                   for e, (_n, _u, rate, values), src, lead in layout]
+        records = [ChannelRecord(e.name, e.unit, rate, e.divisor, len(values), e.bit_width, src, lead, note)
+                   for e, (_n, _u, rate, values), src, lead, note in layout]
         record = _build_record(mbd_path, mbd.sha256, mbd, name, t0_ms, start_source, start_local, span_ms, base_hz,
-                               records, skipped, warnings, utc0, gps_info, plan, violations)
+                               records, skipped, warnings, utc0, gps_info, plan, violations, map_applied)
         (staged / RECORD_NAME).write_bytes(record.encode(RECORD_ENCODING))
+        if before_replace is not None:
+            before_replace(final_dir)  # 一発変換のガード: 走査のあとに外部が出力先を変えていたら例外で公開をやめる
         if final_dir.exists():
             final_dir.rename(stage / OLD_NAME)
             try:
@@ -295,8 +354,17 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
     finally:
         if not keep_stage:
             shutil.rmtree(stage, ignore_errors=True)
+    # 対応表の自動成長は、MES を公開し終えた後に保存する（失敗した変換は設定にも何も残さない）。保存に失敗しても変換は成功のまま
+    map_saved = True
+    if channel_map_data is not None:
+        added = map_rules.grow_with_defaults(channel_map_data, narrow_rows + wide_rows)
+        if added > 0 or channel_map_data.get("_has_unsaved", False):
+            _path, map_saved = cmapmod.merge_and_save_map(channel_map_data, log=log)
+            channel_map_data["_has_unsaved"] = not map_saved
+            if map_saved and added > 0:
+                log(f"Channel map auto-update: added {added} new channel(s).")
     return ConvertResult(final_dir, name, t0_ms, start_source, span_ms, base_hz, records, skipped, warnings, violations,
-                         record, plan, lap_written, mbd_path, mbd.sha256)
+                         record, plan, lap_written, mbd_path, mbd.sha256, map_saved, map_applied)
 
 
 def _write_laps(mbd: MbdFile, g, t_gps, staged: Path, name: str, base_hz: int, span_ms: int, warn):

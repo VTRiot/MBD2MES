@@ -1,0 +1,411 @@
+{
+  "schema": 1,
+  "channels": {
+    "Latitude": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "Longitude": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "V_GPS": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "km/h",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "SysV": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "V",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "Ne": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "rpm",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "THP": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "THGRPP": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "THGRPADJ": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "VFW": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "km/h",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "VRW": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "km/h",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "VSPEST": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "km/h",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "GearPos": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "GYROAN": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "LAF": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "afr",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "TW": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "degC",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "TA": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "degC",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "SLIP": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "DSLIP": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%/s",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "FrSUS": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "mm",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "RrSUS": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "mm",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "PBKF": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "Mpa",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "PBKR": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "Mpa",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "SFTAD": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "V",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "F_CLUTCH": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "MODEA": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "M-A",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "MODEB": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "M-B",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "MODETYR": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "M-TYR",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "GYPIAN": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "PIANWIL": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "GYPIRA": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg/s",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "GYXAC": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "G",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "STRQTRG": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "SLIPTRG": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "SLPTRGMA": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "SLPTRGOF": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "SLPTRGEB": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "DSLPDEAD": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%/s",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KSRCROAN": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "TRQPCTRD": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "%",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "IGTRQRTD": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "FCTOTAL": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "cc",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLVENG": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "PWR",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLVPCT": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "PCT",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLVTCS": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "TCS",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "NTCFBGLV": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "LV",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "NTCOFTLV": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "LV",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLVEWIL": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "WHEELI",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLVSRC": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "SRC",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLVBT": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "EB",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLVSLP": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "EBSLIP",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "CLVBTJNE": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "LV",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "NTHEBFC": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "USSAJLV1": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "USSAJLV2": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "DNSTLVL1": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "ANGDRUM": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "deg",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLFWGYAJ": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "F",
+      "multiplier": 1.0,
+      "offset": 0.0
+    },
+    "KLRWGYAJ": {
+      "unit": null,
+      "custom_name": null,
+      "raw_unit": "F",
+      "multiplier": 1.0,
+      "offset": 0.0
+    }
+  }
+}
