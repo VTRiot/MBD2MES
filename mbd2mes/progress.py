@@ -67,6 +67,25 @@ class ProgressEvent:
         return f"File {self.file_index}/{self.file_count}: {self.file_name}"
 
 
+REMAINING_MIN_ELAPSED_S = 3.0  # 残りの目安を出し始める経過時間（始めのうちは当てにならない）
+REMAINING_MIN_FRACTION = 0.03  # 同じく進み
+
+
+def estimate_remaining(elapsed_s: float, overall_fraction: float) -> float | None:
+    """残りの目安（秒）。ここまでの進みの速さが続くとみなす（経過時間 / 進み x 残りの進み）。まだ当てにならない間は None。"""
+    if elapsed_s < REMAINING_MIN_ELAPSED_S or overall_fraction < REMAINING_MIN_FRACTION or overall_fraction >= 1.0:
+        return None
+    return elapsed_s / overall_fraction * (1.0 - overall_fraction)
+
+
+def format_clock(seconds: float) -> str:
+    """m:ss（1 時間を超えたら h:mm:ss）。"""
+    s = max(int(round(seconds)), 0)
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
+
+
 def make_event(file_index: int, file_count: int, file_name: str, step: int, frac: float) -> ProgressEvent:
     step = min(max(step, 1), STEP_COUNT)
     frac = min(max(frac, 0.0), 1.0)

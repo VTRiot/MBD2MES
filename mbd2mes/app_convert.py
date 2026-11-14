@@ -30,6 +30,10 @@ class Outcome:
     results: list[cv.ConvertResult] = field(default_factory=list)
     failed: list[tuple[Path, str, int]] = field(default_factory=list)  # (入力, 理由, 終了コード)
     declined: list[Path] = field(default_factory=list)  # 上書きを断られた入力
+    cancel_requested: bool = False  # Cancel が押された（FB03）
+    cancelled_file: Path | None = None  # 変換の途中で止めた 1 本（何も書いていない）
+    cancelled_step: str = ""  # 止めたときの段の名前
+    not_started: list[Path] = field(default_factory=list)  # Cancel のため始めなかった残り
 
     @property
     def map_save_failed(self) -> bool:
@@ -44,12 +48,15 @@ def target_mes_dir(path, out_dir, mes_name: str | None = None) -> Path:
 
 def convert_many(paths, out_dir, *, mes_name: str | None = None, force: bool = False, date: datetime.date | None = None,
                  channel_map_data=USE_DEFAULT_MAP, log=None, confirm_overwrite=None, before_replace=None,
-                 date_label: str = dates.SOURCE_OPTION, progress=None, file_offset: int = 0, file_total: int | None = None) -> Outcome:
+                 date_label: str = dates.SOURCE_OPTION, progress=None, file_offset: int = 0, file_total: int | None = None,
+                 cancel=None) -> Outcome:
     """paths を順に convert_one する。1 件の失敗で止めない。
 
     confirm_overwrite(入力, 既存の MES フォルダ) -> bool: 同名の MES があり force でないとき、置き換えてよいかを聞く関数。
     None なら聞かず、convert_one が「already exists」で失敗させる（CLI の既定）。False を返した入力は declined に入り、変換しない。
     before_replace(MES フォルダ) は convert_one へそのまま渡す（一発変換のガード）。
+    cancel: 省略できる（is_set() を持つ物。FB03）。立つと、変換中の 1 本は次の通知の口で止まり（convert.Cancelled）、残りは始めない。
+    止めた 1 本は失敗にも成功にも数えない（cancelled_file）。終わった物は変換済みのまま。
     progress(ProgressEvent): 省略できる（画面の進み具合用）。1 本ごとに段の進みを全体の % にして渡す。file_offset・file_total は、
     呼び出し側が 1 本ずつ呼ぶとき（一発変換）の File k/n の数え方（k = file_offset + このループの番号）。
     date は明示の記録日（CLI の --date・GUI の欄）で、あれば全部の入力に使う（date_label = その出どころの名前）。
@@ -61,6 +68,12 @@ def convert_many(paths, out_dir, *, mes_name: str | None = None, force: bool = F
     paths = [Path(p) for p in paths]
     total = file_total if file_total is not None else len(paths)
     for idx, path in enumerate(paths):
+        if cancel is not None and cancel.is_set():  # 始める前に止める（残りは始めない）
+            out.cancel_requested = True
+            out.not_started = paths[idx:]
+            log("[CANCEL] Cancelled: the remaining " + str(len(out.not_started)) + " file(s) were not started: "
+                + ", ".join(p.name for p in out.not_started))
+            break
         this_force = force
         file_index = file_offset + idx + 1
 
@@ -84,7 +97,17 @@ def convert_many(paths, out_dir, *, mes_name: str | None = None, force: bool = F
         try:
             res = cv.convert_one(path, out_dir, mes_name=mes_name, force=this_force, date=choice.date, channel_map_data=cmap, log=log,
                                  before_replace=before_replace, date_label=choice.source,
-                                 progress=report if progress is not None else None)
+                                 progress=report if progress is not None else None, cancel=cancel)
+        except cv.Cancelled as exc:  # 止めた 1 本は何も書いていない（作業フォルダは消え、既存の MES は変わらない）
+            out.cancel_requested = True
+            out.cancelled_file = path
+            out.cancelled_step = exc.step_label
+            out.not_started = paths[idx + 1:]
+            log(f"[CANCEL] {path.name}: cancelled while \"{exc.step_label}\"; nothing was written for it")
+            if out.not_started:
+                log("[CANCEL] The remaining " + str(len(out.not_started)) + " file(s) were not started: "
+                    + ", ".join(p.name for p in out.not_started))
+            break
         except MbdError as exc:
             log(f"[ERROR] {path.name}: {exc}")
             out.failed.append((path, str(exc), EXIT_CORRUPT))
@@ -100,6 +123,9 @@ def convert_many(paths, out_dir, *, mes_name: str | None = None, force: bool = F
             finish()
         else:
             out.results.append(res)
+    if out.cancel_requested:
+        finished = ", ".join(r.input_path.name for r in out.results) or "none"
+        log(f"[CANCEL] Cancelled. Finished before the cancel: {finished}")
     return out
 
 
@@ -113,6 +139,12 @@ def exit_code_for(outcome: Outcome, n_inputs: int) -> int:
 def outcome_text(outcome: Outcome, n_inputs: int) -> str:
     """GUI の完了ダイアログ・ログ用の 1 つの文（件数と、失敗・見送りの内訳）。"""
     lines = [f"Converted {len(outcome.results)} of {n_inputs} file(s)."]
+    if outcome.cancel_requested:
+        lines.append("Cancelled by the user.")
+        if outcome.cancelled_file is not None:
+            lines.append(f"Stopped: {outcome.cancelled_file.name} (nothing was written for it)")
+        if outcome.not_started:
+            lines.append(f"Not started: {len(outcome.not_started)}")
     if outcome.declined:
         lines.append(f"Skipped (existing MES kept): {len(outcome.declined)}")
     if outcome.failed:

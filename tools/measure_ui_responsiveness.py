@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """変換中の画面の反応の実測（FB02）。標本を実際に GUI の経路（別スレッド）で変換し、主ループがどれだけ止まらずに回るかと、
-バー・% の進み方を記録する。窓は出さない（withdraw）。設定は一時フォルダ。
+バー・% の進み方を記録する。窓は出さない（親を withdraw。FB03 からはダイアログの表示を見る）。設定は一時フォルダ。
 
   python -I tools/measure_ui_responsiveness.py <標本の .MBD（SHA-256 照合済みのコピー）>
 
@@ -51,10 +51,13 @@ def main() -> int:
         t_start = time.perf_counter()
         next_mark = [1.0]
         real = app._on_progress
+        last_seen = [("", "")]  # ダイアログに出ていた最後の % と段（ダイアログは終わると閉じる）
 
         def spy(ev):
             updates[0] += 1
             real(ev)
+            if app._dialog is not None:
+                last_seen[0] = (app._dialog.percent_var.get(), app._dialog.step_var.get())
 
         app._job._on_progress = spy
 
@@ -64,7 +67,7 @@ def main() -> int:
             last[0] = now
             el = now - t_start
             if el >= next_mark[0]:
-                marks.append((el, app.percent_var.get(), app.step_progress_var.get()))
+                marks.append((el, *last_seen[0]))
                 next_mark[0] += 1.0
             if app._busy or app._job.running:
                 root.after(TICK_MS, tick)
@@ -77,7 +80,7 @@ def main() -> int:
         print(f"sample: {sample.stat().st_size:,} bytes; conversion through the GUI path: {total:.2f} s")
         print(f"main loop gap while converting (tick every {TICK_MS} ms): median {statistics.median(gaps_ms):.1f} ms, "
               f"p99 {gaps_ms[int(len(gaps_ms) * 0.99) - 1]:.1f} ms, max {gaps_ms[-1]:.1f} ms over {len(gaps_ms)} ticks")
-        print(f"progress updates delivered to the window: {updates[0]}; final: {app.percent_var.get()} / {app.step_progress_var.get()}")
+        print(f"progress updates delivered to the dialog: {updates[0]}; last shown in the dialog: {last_seen[0][0]} / {last_seen[0][1]}")
         print("per second (elapsed s, percent, step):")
         for el, pct, step in marks:
             print(f"  {el:5.1f}  {pct:>4}  {step}")

@@ -25,13 +25,13 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import app_convert as ac
 from . import batch
-from . import busy_animation
 from . import channel_map as cmapmod
 from . import config as cfgmod
 from . import dates
 from . import jobs
 from . import map_rules
 from . import progress as prg
+from . import progress_dialog
 from . import race_env as renv
 from . import version
 
@@ -40,8 +40,6 @@ APP_USER_MODEL_ID = "MBD2MES.Converter"
 APP_TITLE = version.APP_NAME
 ICON_NAME = "MBD2MES.ico"
 ICON_REL_DIR = ("Pic", "ICON")  # 正本の置き場（リポ直下の Pic/ICON/MBD2MES.ico）。frozen では spec が _MEIPASS 直下へ同梱する
-ELAPSED_INTERVAL_MS = 500  # 経過時間の表示を更新する間隔
-ACTIVITY_INTERVAL_MS = 25  # 不定のバー（動いている印）の動く間隔
 SCALING_HINT = "Multiplier / Offset are applied after the MBD conversion (value x Multiplier + Offset)."
 
 
@@ -214,8 +212,7 @@ class MbdGui:
         self._busy = False
         self._busy_widgets: list = []
         self._saved_states: dict = {}
-        self._started_at = 0.0
-        self._elapsed_after = None
+        self._dialog = None  # 変換中だけ出す進捗ダイアログ（FB03）
         self._job = jobs.JobRunner(root, self._on_progress, self._log)
 
         notebook = ttk.Notebook(root)
@@ -229,7 +226,6 @@ class MbdGui:
         self._build_convert_tab()
         self._build_map_tab()
         self._build_other_tab()
-        self.animation = busy_animation.BusyAnimation(root)  # 窓の右上の端。GIF が無ければ何も出ない
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _apply_window_icon(self) -> bool:
@@ -302,26 +298,6 @@ class MbdGui:
         self._busy_widgets += [self.browse_button, self.remove_button, self.clear_button, self.change_button, self.date_entry,
                                self.use_candidate_button, self.reload_candidate_button, self.convert_button,
                                self.convert_unconverted_button, self.convert_all_check]
-
-        # 進み具合（FB02）: 何の段か・全体の %・File k/n・動いている印（不定のバー・経過時間）
-        prog_frame = tk.LabelFrame(frame, text="Progress")
-        prog_frame.pack(fill="x", padx=4, pady=4)
-        self.file_progress_var = tk.StringVar(value="")
-        self.step_progress_var = tk.StringVar(value="Ready")
-        tk.Label(prog_frame, textvariable=self.file_progress_var, anchor="w").pack(fill="x", padx=4)
-        tk.Label(prog_frame, textvariable=self.step_progress_var, anchor="w").pack(fill="x", padx=4)
-        bar_row = tk.Frame(prog_frame)
-        bar_row.pack(fill="x", padx=4, pady=2)
-        self.progress_bar = ttk.Progressbar(bar_row, mode="determinate", maximum=100.0)
-        self.progress_bar.pack(side="left", fill="x", expand=True)
-        self.percent_var = tk.StringVar(value="0%")
-        tk.Label(bar_row, textvariable=self.percent_var, width=5, anchor="e").pack(side="left", padx=4)
-        alive_row = tk.Frame(prog_frame)
-        alive_row.pack(fill="x", padx=4, pady=(0, 4))
-        self.activity_bar = ttk.Progressbar(alive_row, mode="indeterminate", length=120)  # % が止まって見える間も、動きが見える
-        self.activity_bar.pack(side="left")
-        self.elapsed_var = tk.StringVar(value="")
-        tk.Label(alive_row, textvariable=self.elapsed_var, anchor="w").pack(side="left", padx=6)
 
         log_frame = tk.LabelFrame(frame, text="Log")
         log_frame.pack(fill="both", expand=True, padx=4, pady=4)
@@ -410,10 +386,11 @@ class MbdGui:
         self.log_text.configure(state="disabled")
         self.root.update_idletasks()
 
-    # ------------------------------------------------------------ 変換中の画面（FB02）
+    # ------------------------------------------------------------ 変換中の画面（FB02・FB03）
     def _set_busy(self, busy: bool) -> None:
-        """変換中は、変換・一発変換・一覧・出力先・対応表の部品を押せなくし、動いている印（不定のバー・経過時間・GIF）を出す。
-        終わったら（失敗しても）戻す。戻すときは、押せなくする前の状態（Use This の灰色など）へ戻す。"""
+        """変換中は、変換・一発変換・一覧・出力先・対応表の部品を押せなくする（FB03 からは、変換の本体はモーダルの進捗ダイアログが
+        前面に出るので、メイン窓の見た目は FB02 以前のまま）。終わったら（失敗しても）戻す。戻すときは、押せなくする前の状態
+        （Use This の灰色など）へ戻す。"""
         if busy == self._busy:
             return
         self._busy = busy
@@ -421,66 +398,51 @@ class MbdGui:
             self._saved_states = {w: str(w.cget("state")) for w in self._busy_widgets}
             for w in self._busy_widgets:
                 w.configure(state="disabled")
-            self._started_at = time.monotonic()
-            self.progress_bar["value"] = 0.0
-            self.percent_var.set("0%")
-            self.activity_bar.start(ACTIVITY_INTERVAL_MS)
-            self.animation.start()
-            self._tick_elapsed()
         else:
             for w, state in self._saved_states.items():
                 w.configure(state=state)
             self._saved_states = {}
-            self.activity_bar.stop()
-            self.animation.stop()
-            if self._elapsed_after is not None:
-                self.root.after_cancel(self._elapsed_after)
-                self._elapsed_after = None
-
-    def _tick_elapsed(self) -> None:
-        if not self._busy:
-            return
-        self.elapsed_var.set(f"Working... {int(time.monotonic() - self._started_at)} s")
-        self._elapsed_after = self.root.after(ELAPSED_INTERVAL_MS, self._tick_elapsed)
 
     def _on_progress(self, event: "prg.ProgressEvent") -> None:
-        """別スレッドの変換からの進み（主スレッドで呼ばれる）。バーは戻らない（単調）。"""
-        value = max(float(self.progress_bar["value"]), event.overall * 100.0)
-        self.progress_bar["value"] = value
-        self.percent_var.set(f"{int(value + 1e-9)}%")
-        self.step_progress_var.set(event.step_text())
-        self.file_progress_var.set(event.file_text())
+        """別スレッドの変換からの進み（主スレッドで呼ばれる）。進捗ダイアログがあれば、そこへ渡す（バーは戻らない）。"""
+        if self._dialog is not None:
+            self._dialog.update_progress(event)
 
-    def _finish_progress(self, ok: bool) -> None:
-        if ok:
-            self.progress_bar["value"] = 100.0
-            self.percent_var.set("100%")
-            self.step_progress_var.set("Done")
-        else:
-            self.step_progress_var.set("Stopped (see the log)")
-        self.elapsed_var.set(f"Finished in {int(time.monotonic() - self._started_at)} s")
+    def _open_progress_dialog(self) -> None:
+        """変換の本体（Convert・一発変換の変換）のときだけ、モーダルの進捗ダイアログを出す。出せなくても変換は続ける（Cancel は無い）。"""
+        try:
+            self._dialog = progress_dialog.ProgressDialog(self.root, on_cancel=self._job.request_cancel)
+        except Exception as exc:  # noqa: BLE001 -- ダイアログの失敗で変換を止めない
+            self._dialog = None
+            self._log(f"[WARN] The progress dialog could not be shown ({exc}); the conversion continues without it")
 
-    def _start_job(self, work, on_done, status: str = "Starting...", final: bool = True) -> bool:
-        """work(emitter) を別スレッドで走らせる。終わったら、押せなくした部品を戻してから on_done(結果, 例外, 文面) を主スレッドで呼ぶ。
-        始められなかったら False。"""
+    def _close_progress_dialog(self) -> None:
+        dlg, self._dialog = self._dialog, None
+        if dlg is not None:
+            dlg.close()
+
+    def _start_job(self, work, on_done, status: str = "Starting...", dialog: bool = False) -> bool:
+        """work(emitter) を別スレッドで走らせる。dialog=True なら、モーダルの進捗ダイアログ（Cancel つき）を出す。終わったら、
+        ダイアログを閉じ、押せなくした部品を戻してから on_done(結果, 例外, 文面) を主スレッドで呼ぶ。始められなかったら False。"""
         if self._busy or self._job.running:
             return False
 
         def done(result, exc, tb) -> None:
-            self._set_busy(False)  # 成功でも失敗でも、先に必ず戻す
-            if final or exc is not None:  # 走査のような途中の仕事は「Done」と出さない（次の仕事が続く）
-                self._finish_progress(exc is None)
+            self._close_progress_dialog()  # 成功でも失敗でも、先に必ず閉じる
+            self._set_busy(False)  # 続けて、押せなくした部品を戻す
             try:
                 on_done(result, exc, tb)
             except Exception as exc2:  # noqa: BLE001 -- 後始末の中の失敗も画面に出す（windowed の exe ではログが唯一の手がかり）
                 self._report_job_error("Conversion", exc2, traceback.format_exc())
 
         self._set_busy(True)
-        self.step_progress_var.set(status)
-        self.file_progress_var.set("")
+        self._log(f"[INFO] {status}")
+        if dialog:
+            self._open_progress_dialog()
         try:
             self._job.start(work, done)
         except Exception:
+            self._close_progress_dialog()
             self._set_busy(False)
             raise
         return True
@@ -536,7 +498,7 @@ class MbdGui:
         def work(emit):
             return ac.convert_many(paths, out_dir, log=emit.log, channel_map_data=self.channel_map_data,
                                    confirm_overwrite=lambda _p, _d: overwrite_all, date=date_value, date_label=dates.SOURCE_FIELD,
-                                   progress=emit.progress)
+                                   progress=emit.progress, cancel=emit.cancel)
 
         def on_done(outcome, exc, tb) -> None:
             if exc is not None:
@@ -550,7 +512,7 @@ class MbdGui:
                 self._log("[WARN] Failed to save some channel map entries. Please re-save using the 'Save' button in the 'Channel Map' tab.")
             messagebox.showinfo(APP_TITLE, ac.outcome_text(outcome, len(paths)))
 
-        self._start_job(work, on_done, status="Starting the conversion...")
+        self._start_job(work, on_done, status="Starting the conversion...", dialog=True)
 
     def _replace_list(self, paths: list[Path]) -> None:
         self.selected_files.clear()
@@ -600,7 +562,7 @@ class MbdGui:
                                                 scan_started_at_ns=started_ns)
 
             started = self._start_job(scan_work, lambda scan, exc, tb: self._after_scan(scan, exc, tb, date_value),
-                                      status="Scanning the folder...", final=False)
+                                      status="Scanning the folder...")
         except Exception as exc:  # noqa: BLE001 -- windowed の exe ではログが唯一の手がかり
             self._report_job_error("Batch conversion", exc, traceback.format_exc())
         finally:
@@ -633,10 +595,10 @@ class MbdGui:
                 return batch.convert_unconverted(
                     scan, log=emit.log, channel_map_data=self.channel_map_data, date=date_value, date_label=dates.SOURCE_FIELD,
                     progress_cb=lambda idx, total, path: emit.log(f"[{idx + 1}/{total}] Converting: {path.name}..."),
-                    progress=emit.progress)
+                    progress=emit.progress, cancel=emit.cancel)
 
             started = self._start_job(work, lambda report, exc2, tb2: self._after_batch(scan, report, exc2, tb2),
-                                      status="Starting the conversion...")
+                                      status="Starting the conversion...", dialog=True)
         except Exception as exc3:  # noqa: BLE001
             self._report_job_error("Batch conversion", exc3, traceback.format_exc())
         finally:

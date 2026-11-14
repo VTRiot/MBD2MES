@@ -92,9 +92,12 @@ def load_frames(path: Path, master: tk.Misc) -> list[tk.PhotoImage]:
 
 
 class BusyAnimation:
-    """窓の右上の端に GIF を置き、start() の間だけ再生し、stop() で止める（止めたら最初のコマを静止して見せる）。"""
+    """GIF を master の中に置き、start() の間だけ再生し、stop() で止める（止めたら最初のコマを静止して見せる）。
 
-    def __init__(self, root: tk.Misc, gif_path: Path | None = None, frame_ms: int = FRAME_MS) -> None:
+    attach(label): 置き方を決める関数（FB03: 進捗ダイアログの右の余白へ grid で置く）。None なら、master の右上の端へ place する
+    （FB02 の窓の端。今のメイン窓は使わない）。GIF が無ければ label は作らず、attach も呼ばない（余白を取らない）。"""
+
+    def __init__(self, root: tk.Misc, gif_path: Path | None = None, frame_ms: int = FRAME_MS, attach=None) -> None:
         self._root = root
         self._frame_ms = frame_ms
         self._index = 0
@@ -105,7 +108,10 @@ class BusyAnimation:
         self.label: tk.Label | None = None
         if self.frames:
             self.label = tk.Label(root, image=self.frames[0], borderwidth=0, highlightthickness=0, bg=root.cget("bg"))
-            self.label.place(relx=1.0, x=-MARGIN_PX, y=MARGIN_PX, anchor="ne")  # 窓の右上の端（タブの並びと重ならない側）
+            if attach is not None:
+                attach(self.label)
+            else:
+                self.label.place(relx=1.0, x=-MARGIN_PX, y=MARGIN_PX, anchor="ne")  # 右上の端
 
     @property
     def loaded(self) -> bool:
@@ -126,6 +132,13 @@ class BusyAnimation:
         self.label.configure(image=self.frames[self._index])
         self._index = (self._index + 1) % len(self.frames)
         self._after_id = self._root.after(self._frame_ms, self._step)
+
+    def release(self) -> None:
+        """止めて、コマを手放す（PhotoImage の後始末を、呼んだスレッド = 主スレッドで済ませるため。別スレッドで回収されると
+        「main thread is not in main loop」が出うる）。"""
+        self.stop()
+        self.frames = []
+        self.label = None
 
     def stop(self) -> None:
         """再生を止める（最初のコマを静止して見せる）。GIF が無ければ何もしない。"""

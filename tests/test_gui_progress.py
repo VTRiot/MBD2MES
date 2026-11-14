@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""FB02: 変換中も画面が止まらない・段ごとの進み・動いている印・ボタンの無効化と復帰・窓の端の GIF。Tk の窓は出さない（withdraw）。"""
+"""FB02: 変換中も画面が止まらない・ボタンの無効化と復帰・GIF の読み込みと大きさ・別スレッドの橋。Tk の窓は出さない（withdraw）。
+
+FB03 で、メイン窓の Progress 欄と窓の端の GIF は外れ、進捗はモーダルのダイアログへ移った。その試験は tests/test_progress_dialog.py。"""
 
 from __future__ import annotations
 
@@ -89,64 +91,6 @@ class Gate:
         monkeypatch.setattr(ac, "convert_many", slow)
 
 
-# ---------------------------------------------------------------- 1・4: 変換中も画面が動く・ボタンが押せない・終わったら戻る
-def test_the_ui_keeps_running_and_buttons_are_disabled_while_converting_then_restored(app, tmp_path, monkeypatch):
-    app.selected_files.append(ms.write(tmp_path / "a.MBD", course="a"))
-    shown = stub_boxes(monkeypatch)
-    before = all_states(app)
-    assert before[app.use_candidate_button] == "disabled"  # 候補なし = 最初から灰色
-    gate = Gate(monkeypatch)
-    app._on_convert()
-    assert app._busy and all(v == "disabled" for v in all_states(app).values())  # 変換・一発変換・一覧・出力先・対応表が押せない
-    ticks = []
-    app.root.after(10, lambda: ticks.append("main loop alive"))  # 変換中に、主ループの after の予約が動く = 画面が固まっていない
-    deadline = time.monotonic() + 10
-    while not gate.reached.is_set() and time.monotonic() < deadline:
-        app.root.update()
-    t0 = time.monotonic()
-    pump(app, 0.3)
-    assert ticks == ["main loop alive"] and time.monotonic() - t0 < 1.0  # 仕事が止まっていても update() が戻ってくる
-    assert app.step_progress_var.get().startswith("Step 3/7") and app.file_progress_var.get() == "File 1/1: a.MBD"
-    assert float(app.progress_bar["value"]) == pytest.approx(prg_overall(1, 1, 3, 0.5) * 100)
-    app._on_convert()  # 変換中の 2 回目の押下は無視される（2 つ目の仕事を始めない）
-    app._on_convert_unconverted()
-    assert shown["asked"] == [] and shown["info"] == [] and app._job.running
-    gate.release.set()
-    app.wait_idle()
-    assert not app._busy and all_states(app) == before  # 押せなくした部品が、元の状態（灰色だった物は灰色のまま）へ戻る
-    assert shown["info"] and "Converted 1 of 1" in shown["info"][-1][1]
-    assert app.step_progress_var.get() == "Done" and app.percent_var.get() == "100%" and float(app.progress_bar["value"]) == 100.0
-
-
-def prg_overall(*a):
-    from mbd2mes import progress as prg
-
-    return prg.overall(*a)
-
-
-def test_a_failed_conversion_restores_the_buttons_and_shows_the_error(app, tmp_path, monkeypatch):
-    app.selected_files.append(ms.write(tmp_path / "a.MBD", course="a"))
-    shown = stub_boxes(monkeypatch)
-    before = all_states(app)
-
-    real_convert_many = ac.convert_many
-
-    def boom(*a, **k):
-        raise RuntimeError("converter exploded")
-
-    monkeypatch.setattr(ac, "convert_many", boom)
-    app._on_convert()
-    app.wait_idle()
-    assert not app._busy and all_states(app) == before  # 失敗しても戻る
-    assert shown["error"] and "converter exploded" in shown["error"][0][1]
-    assert "converter exploded" in app.log_text.get("1.0", "end")
-    assert app.step_progress_var.get() == "Stopped (see the log)"
-    monkeypatch.setattr(ac, "convert_many", real_convert_many)
-    app._on_convert()  # 戻った後は、また変換できる
-    app.wait_idle()
-    assert (app.out / "a.MES" / "a.DDD").is_file()
-
-
 def test_per_file_failures_inside_the_conversion_also_restore_the_buttons(app, tmp_path, monkeypatch):
     bad = tmp_path / "bad.MBD"
     bad.write_bytes(b"not an mbd" * 1000)
@@ -161,70 +105,6 @@ def test_per_file_failures_inside_the_conversion_also_restore_the_buttons(app, t
 STEP_TEXTS = {f"Step {k}/7: {label}" for k, label in enumerate(
     ["Reading the MBD file", "Converting channel values", "Preparing the GPS position", "Building channel definitions",
      "Writing channel data files", "Writing laps and checking the result", "Finishing"], start=1)}
-
-
-def test_progress_bar_is_monotonic_and_shows_every_step_and_file_k_of_n_for_many_files(app, tmp_path, monkeypatch):
-    """画面への写し方の確認（決定的）: 通知を主スレッドで 1 つずつ画面へ渡し、全ての段・全てのファイルが出て、バーと % が戻らない。"""
-    paths = [ms.write(tmp_path / f"{n}.MBD", course=n) for n in "abc"]
-    seen = []
-    app._set_busy(True)  # 変換中の画面の状態にしてから渡す（別スレッドは使わない）
-
-    def spy(ev):
-        app._on_progress(ev)
-        seen.append((float(app.progress_bar["value"]), app.step_progress_var.get(), app.file_progress_var.get(), app.percent_var.get()))
-
-    ac.convert_many(paths, tmp_path / "o", channel_map_data=None, progress=spy)
-    app._set_busy(False)
-    values = [v for v, *_rest in seen]
-    assert values == sorted(values) and values[-1] > 99.0  # バーは戻らない
-    assert {f for _v, _s, f, _p in seen} == {"File 1/3: a.MBD", "File 2/3: b.MBD", "File 3/3: c.MBD"}
-    assert {s for _v, s, _f, _p in seen} == STEP_TEXTS  # 7 段が全部、「Step k/7: 何の段か」の形で出る
-    percents = [int(p.rstrip("%")) for *_x, p in seen]
-    assert percents == sorted(percents) and percents[-1] == 100
-
-
-def test_threaded_conversion_updates_the_window_monotonically_and_ends_at_100(app, tmp_path, monkeypatch):
-    """別スレッドの変換の経路（溜まった進みはまとめて反映されるので、途中の段・ファイルは出ないことがある）。出る物は正しく、最後は Done・100%。"""
-    for n in "abc":
-        app.selected_files.append(ms.write(tmp_path / f"{n}.MBD", course=n))
-    stub_boxes(monkeypatch)
-    seen = []
-    real = app._on_progress
-
-    def spy(ev):
-        real(ev)
-        seen.append((float(app.progress_bar["value"]), app.step_progress_var.get(), app.file_progress_var.get()))
-
-    app._job._on_progress = spy
-    app._on_convert()
-    app.wait_idle()
-    values = [v for v, *_r in seen]
-    assert seen and values == sorted(values)  # 反映された分は、戻らない
-    assert {s for _v, s, _f in seen} <= STEP_TEXTS and {f for _v, _s, f in seen} <= {f"File {k}/3: {n}.MBD" for k, n in ((1, "a"), (2, "b"), (3, "c"))}
-    assert app.percent_var.get() == "100%" and app.step_progress_var.get() == "Done" and float(app.progress_bar["value"]) == 100.0
-    assert sorted(p.name for p in app.out.glob("*.MES")) == ["a.MES", "b.MES", "c.MES"]
-
-
-# ---------------------------------------------------------------- 3: 動いている印（% が止まって見える間も）
-def test_activity_bar_and_elapsed_time_move_while_the_percent_is_stalled(app, tmp_path, monkeypatch):
-    app.selected_files.append(ms.write(tmp_path / "a.MBD", course="a"))
-    stub_boxes(monkeypatch)
-    gate = Gate(monkeypatch, steps_before=1)
-    app._on_convert()
-    while not gate.reached.is_set():
-        app.root.update()
-    assert str(app.activity_bar.cget("mode")) == "indeterminate"
-    pump(app, 0.2)  # 変換側が通知した分を画面へ反映させてから、止まって見える間を測る
-    percent_before = app.percent_var.get()
-    a1 = float(app.activity_bar["value"])
-    e1 = app.elapsed_var.get()
-    pump(app, 1.3)
-    assert app.percent_var.get() == percent_before  # % は止まっている
-    assert float(app.activity_bar["value"]) != a1  # 不定のバーは動き続ける
-    assert app.elapsed_var.get() != e1 and app.elapsed_var.get().startswith("Working... ")  # 経過時間が進む
-    gate.release.set()
-    app.wait_idle()
-    assert app.elapsed_var.get().startswith("Finished in ")
 
 
 # ---------------------------------------------------------------- 対応表・窓を閉じる
@@ -264,26 +144,6 @@ def test_the_window_cannot_be_closed_while_converting(app, tmp_path, monkeypatch
     app.wait_idle()
     app._on_close()  # 変換していなければ、聞かずに閉じる
     assert destroyed == [1]
-
-
-# ---------------------------------------------------------------- 一発変換: 走査も変換も別スレッド・チェックは必ず戻る
-def test_batch_flow_runs_in_threads_restores_buttons_and_resets_the_check(app, tmp_path, monkeypatch):
-    src = tmp_path / "src"
-    src.mkdir()
-    cfgmod.set_last_mbd_dir(src)
-    cfgmod.set_batch_checkpoint(src, 946684800 * 10**9, [])  # 起点はずっと前
-    for n in "ab":
-        ms.write(src / f"{n}.MBD", course=n)
-    shown = stub_boxes(monkeypatch, yes=True)
-    before = all_states(app)
-    app.convert_all_var.set(False)
-    app._on_convert_unconverted()
-    assert app._busy and app.step_progress_var.get() == "Scanning the folder..."  # 走査も別スレッド（その間、画面は動く）
-    app.wait_idle()
-    assert not app._busy and all_states(app) == before
-    assert "Found 2 .MBD file(s)" in shown["asked"][0][1] and "Successfully converted: 2" in shown["info"][-1][1]
-    assert sorted(p.name for p in app.out.glob("*.MES")) == ["a.MES", "b.MES"]
-    assert app.step_progress_var.get() == "Done" and app.convert_all_var.get() is False
 
 
 def test_batch_failure_in_the_thread_restores_buttons_and_the_check(app, tmp_path, monkeypatch):
@@ -341,17 +201,6 @@ def make_gif(path: Path, frames: int = 3, size: int = 4) -> Path:
     return path
 
 
-def test_no_gif_means_nothing_shown_and_everything_works(app, tmp_path, monkeypatch):
-    assert app.animation.loaded is False and app.animation.label is None and app.animation.frames == []
-    assert app.animation.start() is False and app.animation.running is False
-    app.animation.stop()  # 何も起きない
-    app.selected_files.append(ms.write(tmp_path / "a.MBD", course="a"))
-    stub_boxes(monkeypatch)
-    app._on_convert()
-    app.wait_idle()
-    assert (app.out / "a.MES" / "a.DDD").is_file()  # GIF が無くても変換できる
-
-
 @pytest.mark.parametrize("payload", [b"", b"not a gif at all", b"GIF89a\x01\x00"])
 def test_a_missing_or_broken_gif_never_raises(app, tmp_path, payload):
     bad = tmp_path / "bad.gif"
@@ -360,70 +209,6 @@ def test_a_missing_or_broken_gif_never_raises(app, tmp_path, payload):
         anim = ba.BusyAnimation(app.root, path)
         assert anim.loaded is False and anim.start() is False
         anim.stop()
-
-
-def test_gif_is_loaded_placed_at_the_window_edge_and_plays_only_while_converting(tmp_path, monkeypatch):
-    fresh_settings(tmp_path, monkeypatch)
-    monkeypatch.setattr(gui.renv, "detect_output_dir", lambda *a, **k: (None, "", "stub"))
-    gif = make_gif(tmp_path / "busy.gif", frames=3)
-    monkeypatch.setenv(ba.GIF_ENV, str(gif))  # 1 か所の差し替え口（環境変数）
-    root = _root()
-    try:
-        a = gui.MbdGui(root)
-        out = tmp_path / "out"
-        out.mkdir()
-        cfgmod.set_output_dir(out)
-        anim = a.animation
-        assert anim.path == gif and anim.loaded and len(anim.frames) == 3
-        info = anim.label.place_info()
-        assert str(info["anchor"]) == "ne" and float(info["relx"]) == 1.0  # 窓の右上の端
-        assert anim.running is False and str(anim.label.cget("image")) == str(anim.frames[0])  # 変換していない間は止まって見える
-        a.selected_files.append(ms.write(tmp_path / "a.MBD", course="a"))
-        stub_boxes(monkeypatch)
-        gate = Gate(monkeypatch)
-        a._on_convert()
-        while not gate.reached.is_set():
-            root.update()
-        assert anim.running is True  # 変換中だけ再生
-        shown_images = set()
-        end = time.monotonic() + 1.0
-        while time.monotonic() < end:
-            root.update()
-            shown_images.add(str(anim.label.cget("image")))
-            time.sleep(0.01)
-        assert len(shown_images) == 3  # 3 コマを順に回る（ループ）
-        gate.release.set()
-        a.wait_idle()
-        assert anim.running is False and str(anim.label.cget("image")) == str(anim.frames[0])  # 終わったら止まる（最初のコマ）
-        end = time.monotonic() + 0.4
-        still = set()
-        while time.monotonic() < end:
-            root.update()
-            still.add(str(anim.label.cget("image")))
-            time.sleep(0.01)
-        assert len(still) == 1  # 止まった後は動かない
-    finally:
-        root.destroy()
-
-
-def test_gif_stops_even_when_the_conversion_fails(tmp_path, monkeypatch):
-    fresh_settings(tmp_path, monkeypatch)
-    monkeypatch.setattr(gui.renv, "detect_output_dir", lambda *a, **k: (None, "", "stub"))
-    monkeypatch.setenv(ba.GIF_ENV, str(make_gif(tmp_path / "busy.gif")))
-    root = _root()
-    try:
-        a = gui.MbdGui(root)
-        out = tmp_path / "out"
-        out.mkdir()
-        cfgmod.set_output_dir(out)
-        a.selected_files.append(ms.write(tmp_path / "a.MBD", course="a"))
-        stub_boxes(monkeypatch)
-        monkeypatch.setattr(ac, "convert_many", lambda *a_, **k: (_ for _ in ()).throw(RuntimeError("x")))
-        a._on_convert()
-        a.wait_idle()
-        assert a.animation.running is False and a._busy is False
-    finally:
-        root.destroy()
 
 
 def test_gif_path_has_one_place_and_the_size_target_is_1_5_cm(app):
@@ -582,3 +367,130 @@ def test_the_worker_yields_the_gil_each_time_it_reports_progress(monkeypatch):
     q = queue.Queue()
     jobs.Emitter(q).progress("ev")
     assert slept == [jobs.PROGRESS_YIELD_S] and jobs.PROGRESS_YIELD_S > 0 and q.get_nowait() == ("progress", "ev")
+
+
+def test_job_runner_gives_the_work_a_cancel_flag_that_request_cancel_sets():
+    """FB03: 仕事は emit.cancel（旗）を見て止まれる。request_cancel は走っている仕事の旗を立てる。旗は仕事ごとに作り直す。"""
+    root, done = FakeRoot(), []
+    runner = jobs.JobRunner(root, lambda e: None, lambda t: None, poll_ms=1)
+    started = threading.Event()
+
+    def work(emit):
+        assert emit.cancel is runner.cancel_event and not emit.cancel.is_set()
+        started.set()
+        assert emit.cancel.wait(10)  # Cancel が来るまで待つ
+        return "stopped"
+
+    runner.start(work, lambda res, exc, tb: done.append(res))
+    assert started.wait(10)
+    runner.request_cancel()
+    root.run(lambda: done)
+    assert done == ["stopped"]
+    first = runner.cancel_event
+    runner.start(lambda emit: emit.cancel.is_set(), lambda res, exc, tb: done.append(res))  # 次の仕事は、立っていない新しい旗
+    root.run(lambda: len(done) == 2)
+    assert done[1] is False and runner.cancel_event is not first
+
+
+def test_emitter_without_a_flag_has_none():
+    import queue
+
+    assert jobs.Emitter(queue.Queue()).cancel is None
+
+
+def test_garbage_collection_is_paused_while_a_job_runs_and_done_on_the_main_thread_afterwards(monkeypatch):
+    """別スレッドで GC が走ると、主スレッドの Tk の変数・画像がそのスレッドで片付けられて Tcl が落ちる（FB03 の全件の試験で実際に落ちた）。
+    仕事の間は GC を止め、終わったら主スレッドで集める。もともと止めてあれば、止めたまま。"""
+    import gc
+
+    main = threading.get_ident()
+    collected = []
+    real_collect = gc.collect
+    monkeypatch.setattr(jobs.gc, "collect", lambda *a: collected.append(threading.get_ident()) or real_collect(*a))
+    for initially in (True, False):
+        (gc.enable if initially else gc.disable)()
+        try:
+            root, seen, done = FakeRoot(), [], []
+            runner = jobs.JobRunner(root, lambda e: None, lambda t: None, poll_ms=1)
+
+            def work(_emit):
+                seen.append(gc.isenabled())  # 仕事（別スレッド）の間
+                return 1
+
+            collected.clear()
+            runner.start(work, lambda res, exc, tb: done.append(gc.isenabled()))
+            assert gc.isenabled() is False  # 仕事を始めたら止まる
+            root.run(lambda: done)
+            assert seen == [False] and done == [initially]  # 仕事の間は止まり、終わったら元の状態へ戻る
+            assert collected == [main]  # 集めるのは主スレッド
+        finally:
+            gc.enable()
+    # 始められなかったときも戻る
+    gc.enable()
+    runner = jobs.JobRunner(FakeRoot(), lambda e: None, lambda t: None)
+    monkeypatch.setattr(jobs.threading.Thread, "start", lambda self: (_ for _ in ()).throw(RuntimeError("no thread")))
+    with pytest.raises(RuntimeError):
+        runner.start(lambda e: 1, lambda *a: None)
+    assert gc.isenabled() and not runner.running
+
+
+def test_garbage_collection_stays_paused_until_the_last_of_overlapping_jobs_finishes(monkeypatch):
+    """GC はプロセス共通。2 つの仕事が重なったとき、先に終わった方で戻さない（Codex の FB03 レビュー [2]）。"""
+    import gc
+
+    gate1, gate2 = threading.Event(), threading.Event()
+    root1, root2, done = FakeRoot(), FakeRoot(), []
+    r1 = jobs.JobRunner(root1, lambda e: None, lambda t: None, poll_ms=1)
+    r2 = jobs.JobRunner(root2, lambda e: None, lambda t: None, poll_ms=1)
+    gc.enable()
+    try:
+        r1.start(lambda e: gate1.wait(10), lambda *a: done.append(1))
+        r2.start(lambda e: gate2.wait(10), lambda *a: done.append(2))
+        assert gc.isenabled() is False
+        gate1.set()
+        root1.run(lambda: 1 in done)
+        assert gc.isenabled() is False  # 1 つ目が終わっても、2 つ目が走っている間は止めたまま
+        gate2.set()
+        root2.run(lambda: 2 in done)
+        assert gc.isenabled() is True  # 最後の仕事が終わったら戻る
+    finally:
+        gate1.set()
+        gate2.set()
+        gc.enable()
+
+
+def test_a_failed_start_restores_everything_wherever_it_fails():
+    """開始の準備のどこで失敗しても、GC・running・保持の旗が戻る（Codex の FB03 レビュー 2 巡目 [1]）。after() の登録の失敗・スレッドの開始の失敗の
+    どちらでも。開始に失敗した仕事の予約済みの _poll は、何もせず、再予約もしない。"""
+    import gc
+
+    class BrokenAfter(FakeRoot):
+        def after(self, _ms, fn):
+            raise RuntimeError("after failed")
+
+    gc.enable()
+    runner = jobs.JobRunner(BrokenAfter(), lambda e: None, lambda t: None)
+    ran = []
+    with pytest.raises(RuntimeError, match="after failed"):
+        runner.start(lambda e: ran.append(1), lambda *a: None)
+    assert gc.isenabled() and not runner.running and jobs._GC_JOBS == 0 and not runner._holds_gc
+    assert ran == []  # 予約が失敗したので、スレッドは始めていない
+    # スレッドの開始が失敗: 予約済みの _poll は何もしない
+    root = FakeRoot()
+    runner2 = jobs.JobRunner(root, lambda e: None, lambda t: None, poll_ms=1)
+    real_start = jobs.threading.Thread.start
+    jobs.threading.Thread.start = lambda self: (_ for _ in ()).throw(RuntimeError("no thread"))
+    try:
+        with pytest.raises(RuntimeError, match="no thread"):
+            runner2.start(lambda e: 1, lambda *a: None)
+    finally:
+        jobs.threading.Thread.start = real_start
+    assert gc.isenabled() and not runner2.running and jobs._GC_JOBS == 0
+    pending, root.pending = root.pending, []
+    for fn in pending:
+        fn()  # 予約済みだった _poll
+    assert root.pending == []  # 再予約しない（止まらずに回り続けない）
+    done = []
+    runner2.start(lambda e: "again", lambda res, exc, tb: done.append(res))  # 失敗の後も、次の仕事を始められる
+    root.run(lambda: done)
+    assert done == ["again"] and gc.isenabled() and jobs._GC_JOBS == 0

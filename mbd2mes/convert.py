@@ -46,6 +46,15 @@ UNIX_EPOCH = datetime.date(1970, 1, 1)
 DAY_SEARCH = (-1, 0, 1)  # mtime から日付を決めるとき、近い日を探す範囲
 
 
+class Cancelled(Exception):
+    """利用者が Cancel を押した（FB03）。失敗ではない。作業フォルダは消え、出力先・既存の MES は変わらない。
+    step_label = 止めたときの段の名前（progress.STEP_LABELS）。"""
+
+    def __init__(self, step_label: str):
+        self.step_label = step_label
+        super().__init__(f"cancelled while: {step_label}")
+
+
 class ConvertError(Exception):
     """変換できない（出力先が既にある、南緯・西経、書けるチャンネルが無い、など）。"""
 
@@ -197,12 +206,15 @@ def _build_record(res_input: Path, sha: str, mbd: MbdFile, name: str, t0_ms: int
 
 def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool = False,
                 date: datetime.date | None = None, channel_map_data: dict | None = None, log=None,
-                before_replace=None, date_label: str = "--date", progress=None) -> ConvertResult:
+                before_replace=None, date_label: str = "--date", progress=None, cancel=None) -> ConvertResult:
     """MBD 1 本から MES 1 本を作る。GUI・CLI（D&D を含む）はすべてこの関数を通る。
 
     channel_map_data は対応表（channel_map の辞書）。None なら表を使わない（恒等。今までと同じ結果）。
     表を渡すと、改名・単位・一次変換（値 x Multiplier + Offset。MBD の換算の後）・任意名のコピーが効き、変換の後に未登録の行を自動で足す。
     表の検証（倍率・単位の整合性）は、出力先の確認・作成より前に終わる（失敗したら何も作らない）。
+    cancel は省略できる（is_set() を持つ物。threading.Event など。FB03）。立つと、次の通知の口（段の境目と重い段の中）で Cancelled を
+    投げて止まる。作業フォルダは finally で消え、出力先・既存の MES・対応表は変わらない。**公開（作業フォルダから最終の位置への入れ替え）
+    の最中は止めない**: 入れ替えが終わってから、そのことをログに出す（その 1 本は変換済みとして終わる）。
     progress(step, frac) は省略できる（画面の進み具合用。step = 1..7・frac = その段の中の進み 0..1。progress.py）。
     CLI は渡さないので出力は変わらない。結果には影響しない。
     before_replace(final_dir) は省略できるフック（一発変換のガード）。MES を公開する直前に呼ぶ。例外を投げると公開せず
@@ -211,9 +223,13 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
     log = log or (lambda _t: None)
     mbd_path, out_dir = Path(mbd_path), Path(out_dir)
 
+    publishing = [False]  # 公開（入れ替え）を始めたら True。以後は止めない
+
     def tick(step: int, frac: float = 0.0) -> None:
         if progress is not None:
             progress(step, frac)
+        if cancel is not None and not publishing[0] and cancel.is_set():
+            raise Cancelled(prg.STEP_LABELS[min(max(step, 1), prg.STEP_COUNT) - 1])
 
     tick(1, 0.0)
     mbd = read_mbd(mbd_path, progress=lambda f: tick(1, f))
@@ -383,6 +399,10 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
         tick(7, 0.0)
         if before_replace is not None:
             before_replace(final_dir)  # 一発変換のガード: 走査のあとに外部が出力先を変えていたら例外で公開をやめる
+        # 止められる最後の口: ガードの最中・直後に Cancel が来ていたら、ここで止める（何も公開しない）。この先が「公開」（入れ替え）で、止めない
+        if cancel is not None and cancel.is_set():
+            raise Cancelled(prg.STEP_LABELS[prg.STEP_COUNT - 1])
+        publishing[0] = True
         if final_dir.exists():
             final_dir.rename(stage / OLD_NAME)
             try:
@@ -409,6 +429,9 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
             channel_map_data["_has_unsaved"] = not map_saved
             if map_saved and added > 0:
                 log(f"Channel map auto-update: added {added} new channel(s).")
+    if cancel is not None and cancel.is_set():
+        log(f"[INFO] {mbd_path.name}: Cancel was requested while the MES was being published; the publish was finished first "
+            "(this file is converted)")
     tick(7, 1.0)
     return ConvertResult(final_dir, name, t0_ms, start_source, span_ms, base_hz, records, skipped, warnings, violations,
                          record, plan, lap_written, mbd_path, mbd.sha256, map_saved, map_applied)

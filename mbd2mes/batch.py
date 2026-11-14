@@ -132,6 +132,9 @@ class BatchReport:
     older_count: int = 0
     not_session_count: int = 0
     saved_failed_files: list[str] = field(default_factory=list)  # 起点に保存した失敗の一覧
+    cancel_requested: bool = False  # Cancel が押された（FB03）
+    cancelled_items: list[Path] = field(default_factory=list)  # 止めた 1 本と、始めなかった残り（変換していない）
+    cancelled_step: str = ""  # 止めたときの段の名前（止めた 1 本があるとき）
     map_saved: bool = True  # 対応表の自動成長を保存できたか（1 本でも保存に失敗したら False）
     checkpoint_saved: bool = False
     notes: list[str] = field(default_factory=list)
@@ -552,8 +555,12 @@ def convert_unconverted(
     date=None,
     date_label: str = dates.SOURCE_FIELD,
     progress=None,
+    cancel=None,
 ) -> BatchReport:
     """走査で決めた NEW・OVERWRITE を 1 本ずつ変換する。変換は convert_many -> convert_one（GUI の Convert と同じ経路）。
+    cancel: 省略できる（is_set() を持つ物。FB03）。立つと、変換中の 1 本は止まり（何も書かず・台帳に載せず）、残りもやめる。
+    終わった物は変換済みのまま（台帳に残る）。**起点は動かさない**（動かすと、やめた物が「起点より古い」になって、
+    次から候補に出なくなるため）。
     date: 明示の記録日（GUI の欄。全部に使う。date_label = 出どころの名前）。None ならファイル名から 1 本ずつ読む。
 
     1 本の失敗で止めない。成功したらその場で台帳に 1 行を書く。候補が 1 本以上あったときだけ、最後に起点を保存する。
@@ -571,6 +578,10 @@ def convert_unconverted(
     changed_names: set[str] = set()
 
     for idx, item in enumerate(todo):
+        if cancel is not None and cancel.is_set():  # 残りはやめる
+            report.cancel_requested = True
+            report.cancelled_items.extend(i.path for i in todo[idx:])
+            break
         if progress_cb:
             progress_cb(idx, len(todo), item.path)
         try:
@@ -593,7 +604,12 @@ def convert_unconverted(
         outcome = ac.convert_many([item.path], scan.out_dir, mes_name=item.mes_name,
                                   force=(item.action == OVERWRITE), channel_map_data=channel_map_data, log=log,
                                   before_replace=guard, date=date, date_label=date_label,
-                                  progress=progress, file_offset=idx, file_total=len(todo))
+                                  progress=progress, file_offset=idx, file_total=len(todo), cancel=cancel)
+        if outcome.cancelled_file is not None:  # 変換の途中で止めた: 何も書いていない・台帳に載せない。残りもやめる
+            report.cancel_requested = True
+            report.cancelled_step = outcome.cancelled_step
+            report.cancelled_items.extend(i.path for i in todo[idx:])
+            break
         if outcome.results:
             res = outcome.results[0]
             sha = res.input_sha256 or item.sha256
@@ -608,7 +624,9 @@ def convert_unconverted(
                 changed_names.add(item.path.name)
             report.failed_items.append((item.path, reason))
 
-    if update_checkpoint:
+    if report.cancel_requested:
+        log("[CANCEL] Batch conversion cancelled. " + "; ".join(cancel_lines(report)))
+    if update_checkpoint and not report.cancel_requested:
         failed_names = {p.name for p, _ in report.failed_items}
         protected_names = {i.path.name.casefold() for i in scan.protected}
         carried = {f for f in scan.previous_failed if Path(f).name.casefold() in protected_names}
@@ -693,6 +711,22 @@ def nothing_text(scan: ScanResult) -> str:
     return text
 
 
+def cancel_lines(report: BatchReport) -> list[str]:
+    """Cancel のログ用の文（どのファイルまで終わったか・止めた 1 本・始めなかった残り）。"""
+    finished = ", ".join(p.name for p in report.converted) or "none"
+    out = [f"Finished (kept as converted): {finished}"]
+    if report.cancelled_items:
+        first, rest = report.cancelled_items[0], report.cancelled_items[1:]
+        if report.cancelled_step:
+            out.append(f"Stopped in the middle (nothing written): {first.name} (while \"{report.cancelled_step}\")")
+        else:
+            out.append(f"Not started: {first.name}")
+        if rest:
+            out.append("Not started: " + ", ".join(p.name for p in rest))
+    out.append("The checkpoint was not moved, so the files that were not converted are still candidates next time")
+    return out
+
+
 def summary_text(report: BatchReport) -> str:
     text = (f"Batch conversion finished.\n\n"
             f"Successfully converted: {report.converted_count}\n"
@@ -701,6 +735,8 @@ def summary_text(report: BatchReport) -> str:
             f"Protected: {report.protected_count}\n"
             f"Not a session: {report.not_session_count}\n"
             f"Failed: {report.failed_count}")
+    if report.cancel_requested:
+        text += (f"\nCancelled by the user. Not converted: {len(report.cancelled_items)} (they remain in the list)")
     if report.failed_count or report.protected_count:
         text += "\n\nFailed or protected file(s) remain in the list for inspection."
     return text
@@ -709,4 +745,5 @@ def summary_text(report: BatchReport) -> str:
 def remaining_after(scan: ScanResult, report: BatchReport) -> list[Path]:
     """実行後に一覧へ残す物: 失敗した物（先）と保護した物。"""
     failed = [p for p, _ in report.failed_items]
-    return failed + [i.path for i in scan.protected if i.path not in failed]
+    kept = failed + [p for p in report.cancelled_items if p not in failed]  # Cancel でやめた物も、一覧に残す（もう一度押せる）
+    return kept + [i.path for i in scan.protected if i.path not in kept]

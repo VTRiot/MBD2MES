@@ -51,6 +51,8 @@ def _exec_spec(spec_dir: Path):
 def test_spec_bundles_seeds_and_icon_from_pic_icon():
     ns = _exec_spec(ROOT / "dist_build")
     datas = {Path(src).relative_to(ROOT).as_posix(): dst for src, dst in ns["a"].kw["datas"]}
+    gif = datas.pop("Pic/anim/busy.gif", None)  # FB02: 窓の GIF は、置いてあるときだけ同梱（親が採用の 1 本を置いた後は同梱される）
+    assert gif in (None, ".") and (gif is not None) == (ROOT / "Pic" / "anim" / "busy.gif").is_file()
     assert datas == {"mbd2mes_config.seed.json": ".", "channel_map.seed.json": ".", "Pic/ICON/MBD2MES.ico": "."}
     assert all((ROOT / p).is_file() for p in datas)
     assert Path(ns["exe"].kw["icon"]) == ICO and ns["exe"].kw["console"] is False
