@@ -238,11 +238,13 @@ def test_the_batch_button_and_the_convert_all_check_exist(app):
 def test_batch_button_guides_when_output_or_source_is_missing(app, tmp_path, monkeypatch):
     shown = stub_boxes(monkeypatch)
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert shown["warn"] and "Output directory is not set" in shown["warn"][0][1]
     out = tmp_path / "out"
     out.mkdir()
     cfgmod.set_output_dir(out)
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert shown["info"] and "Source directory is not set" in shown["info"][0][1]
 
 
@@ -258,6 +260,7 @@ def test_first_press_records_the_checkpoint_and_converts_nothing_like_ld2mes(app
     shown = stub_boxes(monkeypatch, yes=True)
     assert cfgmod.get_batch_checkpoint(src) is None
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert shown["asked"] == [] and list(out.iterdir()) == []  # 確認の画面は出ず、何も変換していない
     title, text = shown["info"][-1][0], shown["info"][-1][1]
     assert title == "MBD2MES - Checkpoint Recorded"
@@ -270,6 +273,7 @@ def test_first_press_records_the_checkpoint_and_converts_nothing_like_ld2mes(app
     assert cp_ is not None and cp_["failed_files"] == []
     # 2 回目: 既存の物は起点より古いので候補にならない（確認の画面は出ない）。起点は動かない
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert shown["asked"] == [] and "Nothing to convert" in shown["info"][-1][1] and "Older than the checkpoint (not converted by this button): 2" in shown["info"][-1][1]
     assert cfgmod.get_batch_checkpoint(src) == cp_ and list(out.iterdir()) == []
 
@@ -283,10 +287,12 @@ def test_after_the_first_press_only_files_that_arrive_later_are_candidates(app, 
     cfgmod.set_last_mbd_dir(src)
     shown = stub_boxes(monkeypatch, yes=True)
     app._on_convert_unconverted()  # 初回: 起点だけ
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     time.sleep(0.05)
     ms.write(src / "new1.MBD", course="new1")  # 起点より後に届いた
     ms.write(src / "new2.MBD", course="new2")
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     confirm = shown["asked"][0][1]
     assert "Found 2 .MBD file(s) to convert" in confirm and "new1.MBD" in confirm and "new2.MBD" in confirm
     assert "old.MBD" not in confirm.split("Target files:")[1].split("Recording date")[0]
@@ -295,6 +301,7 @@ def test_after_the_first_press_only_files_that_arrive_later_are_candidates(app, 
     assert app.selected_files == []
     # 3 回目: もう何も無い
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert len(shown["asked"]) == 1 and "Nothing to convert" in shown["info"][-1][1]
 
 
@@ -309,6 +316,7 @@ def test_first_press_with_convert_all_checked_converts_everything_and_records_th
     shown = stub_boxes(monkeypatch, yes=True)
     app.convert_all_var.set(True)
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert sorted(p.name for p in out.glob("*.MES")) == ["a.MES", "b.MES"]
     assert cfgmod.get_batch_checkpoint(src) is not None and app.convert_all_var.get() is False
 
@@ -329,6 +337,7 @@ def test_batch_button_mixed_folder_confirm_shows_only_unconverted_and_the_dates(
     ms.write(src / "todo2.MBD", course="todo2")
     shown = stub_boxes(monkeypatch, yes=True)
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     confirm = shown["asked"][0][1]
     targets = confirm.split("Target files:")[1].split("Recording date")[0]
     assert "Found 2 .MBD file(s) to convert" in confirm and "done.MBD" not in targets
@@ -353,6 +362,7 @@ def test_batch_button_no_to_the_confirmation_writes_nothing(app, tmp_path, monke
     before = cfgmod.get_batch_checkpoint(src)
     shown = stub_boxes(monkeypatch, yes=False)
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert shown["asked"] and list(out.iterdir()) == [] and cfgmod.get_batch_checkpoint(src) == before
     assert app.convert_all_var.get() is False
 
@@ -369,9 +379,11 @@ def test_convert_all_overwrites_and_the_check_is_reset(app, tmp_path, monkeypatc
     cfgmod.set_batch_checkpoint(src, time.time_ns() + 3600 * 10**9, [])  # どれも起点より古い
     shown = stub_boxes(monkeypatch, yes=True)
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert "Nothing to convert" in shown["info"][-1][1]  # 古い・済み -> 何もしない
     app.convert_all_var.set(True)
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert "OVERWRITTEN" in shown["asked"][-1][1] and "a.MBD (overwrites existing MES)" in shown["asked"][-1][1]
     assert app.convert_all_var.get() is False
 
@@ -387,6 +399,7 @@ def test_an_unexpected_exception_is_logged_shown_and_resets_the_check(app, tmp_p
     monkeypatch.setattr(gui.batch, "scan_mbd_directory", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     app.convert_all_var.set(True)
     app._on_convert_unconverted()
+    app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
     assert shown["error"] and "boom" in shown["error"][0][1] and app.convert_all_var.get() is False
     assert "boom" in app.log_text.get("1.0", "end")
 

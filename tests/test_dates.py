@@ -203,12 +203,15 @@ def test_gui_date_field_is_used_by_convert_and_an_invalid_date_stops_before_conv
         monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a, **k: True)
         app.date_var.set("2026-13-45")
         app._on_convert()
+        app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
         assert warned and "YYYY-MM-DD" in warned[0][1] and list(out.iterdir()) == []  # 何も変換しない
         app.date_var.set("2026-03-04")
         app._on_convert()
+        app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
         assert "Start of download=04.03.2026 09:56:43" in (out / "26-11-8g.MES" / "26-11-8g.HED").read_text(encoding="cp1252")
         app.date_var.set("")  # 空 = 名前から（再変換。同名の MES があるので上書きの確認は Yes）
         app._on_convert()
+        app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
         assert "Start of download=08.11.2026 09:56:43" in (out / "26-11-8g.MES" / "26-11-8g.HED").read_text(encoding="cp1252")
         log = app.log_text.get("1.0", "end")
         assert "recording date 2026-03-04 (date field)" in log and "recording date 2026-11-08 (file name)" in log

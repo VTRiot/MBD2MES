@@ -169,8 +169,14 @@ def _parse_gps(blocks: list[bytes], ticks: list[int]) -> GpsFixes:
     )
 
 
-def read_mbd(path: str | Path) -> MbdFile:
-    """.MBD を読む。形式が合わなければ MbdError。末尾の中途半端なレコードは警告して捨てる。"""
+REPORT_STEPS = 100  # データ領域の走査の進みを知らせる回数（1% ごと）
+
+
+def read_mbd(path: str | Path, progress=None) -> MbdFile:
+    """.MBD を読む。形式が合わなければ MbdError。末尾の中途半端なレコードは警告して捨てる。
+
+    progress(frac): 省略できる。データ領域の走査の進み（0..1）を 1% ごとに知らせる（画面の進み具合用。結果には影響しない）。
+    """
     path = Path(path)
     d = path.read_bytes()
     sha = hashlib.sha256(d).hexdigest()
@@ -202,7 +208,12 @@ def read_mbd(path: str | Path) -> MbdFile:
     gps_step = 1 + GPS_BLOCK_LEN
     val_step = 1 + VALUE_LEN
     first_tag_checked = False
+    report_every = max((n - DATA_OFFSET) // REPORT_STEPS, 1)
+    next_report = DATA_OFFSET + report_every
     while p < n:
+        if progress is not None and p >= next_report:
+            progress((p - DATA_OFFSET) / max(n - DATA_OFFSET, 1))
+            next_report = p + report_every
         t = d[p]
         if t >= count:
             raise MbdError(f"unknown tag 0x{t:02X} at 0x{p:X} (the table has {count} channels)")

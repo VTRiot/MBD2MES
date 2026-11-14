@@ -551,6 +551,7 @@ def convert_unconverted(
     update_checkpoint: bool = True,
     date=None,
     date_label: str = dates.SOURCE_FIELD,
+    progress=None,
 ) -> BatchReport:
     """走査で決めた NEW・OVERWRITE を 1 本ずつ変換する。変換は convert_many -> convert_one（GUI の Convert と同じ経路）。
     date: 明示の記録日（GUI の欄。全部に使う。date_label = 出どころの名前）。None ならファイル名から 1 本ずつ読む。
@@ -591,7 +592,8 @@ def convert_unconverted(
 
         outcome = ac.convert_many([item.path], scan.out_dir, mes_name=item.mes_name,
                                   force=(item.action == OVERWRITE), channel_map_data=channel_map_data, log=log,
-                                  before_replace=guard, date=date, date_label=date_label)
+                                  before_replace=guard, date=date, date_label=date_label,
+                                  progress=progress, file_offset=idx, file_total=len(todo))
         if outcome.results:
             res = outcome.results[0]
             sha = res.input_sha256 or item.sha256

@@ -25,10 +25,13 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import app_convert as ac
 from . import batch
+from . import busy_animation
 from . import channel_map as cmapmod
 from . import config as cfgmod
 from . import dates
+from . import jobs
 from . import map_rules
+from . import progress as prg
 from . import race_env as renv
 from . import version
 
@@ -37,6 +40,8 @@ APP_USER_MODEL_ID = "MBD2MES.Converter"
 APP_TITLE = version.APP_NAME
 ICON_NAME = "MBD2MES.ico"
 ICON_REL_DIR = ("Pic", "ICON")  # 正本の置き場（リポ直下の Pic/ICON/MBD2MES.ico）。frozen では spec が _MEIPASS 直下へ同梱する
+ELAPSED_INTERVAL_MS = 500  # 経過時間の表示を更新する間隔
+ACTIVITY_INTERVAL_MS = 25  # 不定のバー（動いている印）の動く間隔
 SCALING_HINT = "Multiplier / Offset are applied after the MBD conversion (value x Multiplier + Offset)."
 
 
@@ -205,6 +210,13 @@ class MbdGui:
         self.selected_files: list[Path] = []
         self.channel_map_data = map_rules.load_map()
         self.deleted_rows: set[str] = set()  # この窓で削除した行（保存のとき、ディスクの行を戻さない）
+        # 変換中の状態（FB02）: 変換は別スレッドで走り、画面（主ループ）は止まらない。押せない部品は _busy_widgets に集める
+        self._busy = False
+        self._busy_widgets: list = []
+        self._saved_states: dict = {}
+        self._started_at = 0.0
+        self._elapsed_after = None
+        self._job = jobs.JobRunner(root, self._on_progress, self._log)
 
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True, padx=8, pady=8)
@@ -217,6 +229,8 @@ class MbdGui:
         self._build_convert_tab()
         self._build_map_tab()
         self._build_other_tab()
+        self.animation = busy_animation.BusyAnimation(root)  # 窓の右上の端。GIF が無ければ何も出ない
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _apply_window_icon(self) -> bool:
         """タイトルバー・タスクバーにアプリアイコンを適用する（`iconbitmap(default=...)` で、以後作る全トップレベルの既定にする。
@@ -239,16 +253,20 @@ class MbdGui:
         self.file_listbox.pack(side="left", fill="both", expand=True, padx=4, pady=4)
         btns = tk.Frame(file_frame)
         btns.pack(side="left", padx=4)
-        tk.Button(btns, text="Browse Files...", command=self._on_browse, width=16).pack(pady=2)
-        tk.Button(btns, text="Remove Selected", command=self._on_remove_selected, width=16).pack(pady=2)
-        tk.Button(btns, text="Clear List", command=self._on_clear_list, width=16).pack(pady=2)
+        self.browse_button = tk.Button(btns, text="Browse Files...", command=self._on_browse, width=16)
+        self.browse_button.pack(pady=2)
+        self.remove_button = tk.Button(btns, text="Remove Selected", command=self._on_remove_selected, width=16)
+        self.remove_button.pack(pady=2)
+        self.clear_button = tk.Button(btns, text="Clear List", command=self._on_clear_list, width=16)
+        self.clear_button.pack(pady=2)
 
         out_frame = tk.LabelFrame(frame, text="Output Directory")
         out_frame.pack(fill="x", padx=4, pady=4)
         self.output_dir_var = tk.StringVar(value=self._current_output_dir_text())
         tk.Entry(out_frame, textvariable=self.output_dir_var, width=60, state="readonly").pack(
             side="left", fill="x", expand=True, padx=4, pady=4)
-        tk.Button(out_frame, text="Change...", command=self._on_change_output_dir, width=10).pack(side="left", padx=4)
+        self.change_button = tk.Button(out_frame, text="Change...", command=self._on_change_output_dir, width=10)
+        self.change_button.pack(side="left", padx=4)
 
         date_frame = tk.LabelFrame(frame, text="Recording Date (HED)")
         date_frame.pack(fill="x", padx=4, pady=4)
@@ -272,7 +290,8 @@ class MbdGui:
 
         btn_frame = tk.Frame(frame)
         btn_frame.pack(pady=6)
-        tk.Button(btn_frame, text="Convert", command=self._on_convert, bg="#2e7d32", fg="white", width=16).pack(side="left", padx=4)
+        self.convert_button = tk.Button(btn_frame, text="Convert", command=self._on_convert, bg="#2e7d32", fg="white", width=16)
+        self.convert_button.pack(side="left", padx=4)
         self.convert_unconverted_button = tk.Button(btn_frame, text="Convert Unconverted", command=self._on_convert_unconverted,
                                                     bg="#1976d2", fg="white", width=20)
         self.convert_unconverted_button.pack(side="left", padx=4)
@@ -280,6 +299,29 @@ class MbdGui:
         self.convert_all_var = tk.BooleanVar(value=False)
         self.convert_all_check = tk.Checkbutton(btn_frame, text="Convert all .MBD files", variable=self.convert_all_var)
         self.convert_all_check.pack(side="left", padx=4)
+        self._busy_widgets += [self.browse_button, self.remove_button, self.clear_button, self.change_button, self.date_entry,
+                               self.use_candidate_button, self.reload_candidate_button, self.convert_button,
+                               self.convert_unconverted_button, self.convert_all_check]
+
+        # 進み具合（FB02）: 何の段か・全体の %・File k/n・動いている印（不定のバー・経過時間）
+        prog_frame = tk.LabelFrame(frame, text="Progress")
+        prog_frame.pack(fill="x", padx=4, pady=4)
+        self.file_progress_var = tk.StringVar(value="")
+        self.step_progress_var = tk.StringVar(value="Ready")
+        tk.Label(prog_frame, textvariable=self.file_progress_var, anchor="w").pack(fill="x", padx=4)
+        tk.Label(prog_frame, textvariable=self.step_progress_var, anchor="w").pack(fill="x", padx=4)
+        bar_row = tk.Frame(prog_frame)
+        bar_row.pack(fill="x", padx=4, pady=2)
+        self.progress_bar = ttk.Progressbar(bar_row, mode="determinate", maximum=100.0)
+        self.progress_bar.pack(side="left", fill="x", expand=True)
+        self.percent_var = tk.StringVar(value="0%")
+        tk.Label(bar_row, textvariable=self.percent_var, width=5, anchor="e").pack(side="left", padx=4)
+        alive_row = tk.Frame(prog_frame)
+        alive_row.pack(fill="x", padx=4, pady=(0, 4))
+        self.activity_bar = ttk.Progressbar(alive_row, mode="indeterminate", length=120)  # % が止まって見える間も、動きが見える
+        self.activity_bar.pack(side="left")
+        self.elapsed_var = tk.StringVar(value="")
+        tk.Label(alive_row, textvariable=self.elapsed_var, anchor="w").pack(side="left", padx=6)
 
         log_frame = tk.LabelFrame(frame, text="Log")
         log_frame.pack(fill="both", expand=True, padx=4, pady=4)
@@ -368,7 +410,106 @@ class MbdGui:
         self.log_text.configure(state="disabled")
         self.root.update_idletasks()
 
+    # ------------------------------------------------------------ 変換中の画面（FB02）
+    def _set_busy(self, busy: bool) -> None:
+        """変換中は、変換・一発変換・一覧・出力先・対応表の部品を押せなくし、動いている印（不定のバー・経過時間・GIF）を出す。
+        終わったら（失敗しても）戻す。戻すときは、押せなくする前の状態（Use This の灰色など）へ戻す。"""
+        if busy == self._busy:
+            return
+        self._busy = busy
+        if busy:
+            self._saved_states = {w: str(w.cget("state")) for w in self._busy_widgets}
+            for w in self._busy_widgets:
+                w.configure(state="disabled")
+            self._started_at = time.monotonic()
+            self.progress_bar["value"] = 0.0
+            self.percent_var.set("0%")
+            self.activity_bar.start(ACTIVITY_INTERVAL_MS)
+            self.animation.start()
+            self._tick_elapsed()
+        else:
+            for w, state in self._saved_states.items():
+                w.configure(state=state)
+            self._saved_states = {}
+            self.activity_bar.stop()
+            self.animation.stop()
+            if self._elapsed_after is not None:
+                self.root.after_cancel(self._elapsed_after)
+                self._elapsed_after = None
+
+    def _tick_elapsed(self) -> None:
+        if not self._busy:
+            return
+        self.elapsed_var.set(f"Working... {int(time.monotonic() - self._started_at)} s")
+        self._elapsed_after = self.root.after(ELAPSED_INTERVAL_MS, self._tick_elapsed)
+
+    def _on_progress(self, event: "prg.ProgressEvent") -> None:
+        """別スレッドの変換からの進み（主スレッドで呼ばれる）。バーは戻らない（単調）。"""
+        value = max(float(self.progress_bar["value"]), event.overall * 100.0)
+        self.progress_bar["value"] = value
+        self.percent_var.set(f"{int(value + 1e-9)}%")
+        self.step_progress_var.set(event.step_text())
+        self.file_progress_var.set(event.file_text())
+
+    def _finish_progress(self, ok: bool) -> None:
+        if ok:
+            self.progress_bar["value"] = 100.0
+            self.percent_var.set("100%")
+            self.step_progress_var.set("Done")
+        else:
+            self.step_progress_var.set("Stopped (see the log)")
+        self.elapsed_var.set(f"Finished in {int(time.monotonic() - self._started_at)} s")
+
+    def _start_job(self, work, on_done, status: str = "Starting...", final: bool = True) -> bool:
+        """work(emitter) を別スレッドで走らせる。終わったら、押せなくした部品を戻してから on_done(結果, 例外, 文面) を主スレッドで呼ぶ。
+        始められなかったら False。"""
+        if self._busy or self._job.running:
+            return False
+
+        def done(result, exc, tb) -> None:
+            self._set_busy(False)  # 成功でも失敗でも、先に必ず戻す
+            if final or exc is not None:  # 走査のような途中の仕事は「Done」と出さない（次の仕事が続く）
+                self._finish_progress(exc is None)
+            try:
+                on_done(result, exc, tb)
+            except Exception as exc2:  # noqa: BLE001 -- 後始末の中の失敗も画面に出す（windowed の exe ではログが唯一の手がかり）
+                self._report_job_error("Conversion", exc2, traceback.format_exc())
+
+        self._set_busy(True)
+        self.step_progress_var.set(status)
+        self.file_progress_var.set("")
+        try:
+            self._job.start(work, done)
+        except Exception:
+            self._set_busy(False)
+            raise
+        return True
+
+    def _report_job_error(self, what: str, exc: BaseException, tb: str) -> None:
+        print(f"[FATAL EXCEPTION IN GUI] {exc}", file=sys.stderr, flush=True)
+        self._log(f"[ERROR] {what} failed: {exc}")
+        self._log(tb or "".join(traceback.format_exception(exc)))
+        messagebox.showerror(APP_TITLE, f"An error occurred during {what.lower()}:\n{exc}")
+
+    def _on_close(self) -> None:
+        """変換中は閉じさせない。公開の途中（既存の MES を退避してから新しい MES を置くまでの間）でプロセスが終わると、
+        既存の MES が最終の位置から消えたままになりうるため（Codex の FB02 レビュー [1]）。終わるのを待ってから閉じてもらう。"""
+        if self._busy or self._job.running:
+            messagebox.showinfo(APP_TITLE, "A conversion is running. Please wait until it finishes, then close the window.")
+            return
+        self.root.destroy()
+
+    def wait_idle(self, timeout_s: float = 120.0) -> None:
+        """変換が終わる（押せない部品が戻る）まで、画面の更新を回して待つ。試験用（実際の画面は主ループが回す）。"""
+        deadline = time.monotonic() + timeout_s
+        while (self._busy or self._job.running) and time.monotonic() < deadline:
+            self.root.update()
+            time.sleep(0.005)
+        self.root.update()
+
     def _on_convert(self) -> None:
+        if self._busy:
+            return
         if not self.selected_files:
             messagebox.showwarning(APP_TITLE, "Please select .MBD files to convert.")
             return
@@ -391,21 +532,25 @@ class MbdGui:
                 f"{APP_TITLE} - Overwrite?",
                 f"These MES folders already exist in:\n{out_dir}\n\n" + "\n".join(shown)
                 + "\n\nOverwrite them?\n(Yes: overwrite. No: skip these files and convert the others.)"))
-        try:
-            outcome = ac.convert_many(paths, out_dir, log=self._log, channel_map_data=self.channel_map_data,
-                                      confirm_overwrite=lambda _p, _d: overwrite_all, date=date_value, date_label=dates.SOURCE_FIELD)
-        except Exception as exc:  # noqa: BLE001 -- windowed の exe ではログが唯一の手がかり
-            self._log(f"[ERROR] Conversion failed: {exc}")
-            self._log(traceback.format_exc())
-            messagebox.showerror(APP_TITLE, f"An error occurred during conversion:\n{exc}")
-            return
-        for res in outcome.results:
-            for line in _summary(res):
-                self._log(line)
-        self._reload_map_tree()
-        if outcome.map_save_failed:
-            self._log("[WARN] Failed to save some channel map entries. Please re-save using the 'Save' button in the 'Channel Map' tab.")
-        messagebox.showinfo(APP_TITLE, ac.outcome_text(outcome, len(paths)))
+
+        def work(emit):
+            return ac.convert_many(paths, out_dir, log=emit.log, channel_map_data=self.channel_map_data,
+                                   confirm_overwrite=lambda _p, _d: overwrite_all, date=date_value, date_label=dates.SOURCE_FIELD,
+                                   progress=emit.progress)
+
+        def on_done(outcome, exc, tb) -> None:
+            if exc is not None:
+                self._report_job_error("Conversion", exc, tb)
+                return
+            for res in outcome.results:
+                for line in _summary(res):
+                    self._log(line)
+            self._reload_map_tree()
+            if outcome.map_save_failed:
+                self._log("[WARN] Failed to save some channel map entries. Please re-save using the 'Save' button in the 'Channel Map' tab.")
+            messagebox.showinfo(APP_TITLE, ac.outcome_text(outcome, len(paths)))
+
+        self._start_job(work, on_done, status="Starting the conversion...")
 
     def _replace_list(self, paths: list[Path]) -> None:
         self.selected_files.clear()
@@ -415,8 +560,12 @@ class MbdGui:
             self.file_listbox.insert("end", str(p))
 
     def _on_convert_unconverted(self) -> None:
-        """前に選んだ .MBD のフォルダの、未変換の物を一度に変換する（走査 -> 確認の画面 -> 変換。LD2MES の Convert Unconverted と同じ流れ）。"""
+        """前に選んだ .MBD のフォルダの、未変換の物を一度に変換する（走査 -> 確認の画面 -> 変換。LD2MES の Convert Unconverted と同じ流れ）。
+        走査も変換も別スレッドで回し、確認の画面だけ主スレッドで出す。どの終わり方でも「全部変換」のチェックを必ずオフへ戻す。"""
+        if self._busy:
+            return
         convert_all = bool(self.convert_all_var.get())
+        started = False
         try:
             cfg = cfgmod.load_or_init_config()
             out_dir = cfgmod.get_output_dir(cfg)
@@ -428,7 +577,6 @@ class MbdGui:
                 messagebox.showinfo(APP_TITLE, "Source directory is not set or does not exist.\n"
                                     "Please select .MBD file(s) via 'Browse Files...' first.")
                 return
-
             date_value, date_ok = self._read_date_field()
             if not date_ok:
                 return
@@ -445,34 +593,61 @@ class MbdGui:
                     "Only newer .MBD files added or modified after this will be converted on subsequent runs.\n"
                     "To convert all existing files, check 'Convert all .MBD files' or use the Convert button.")
                 return
-            # 走査の開始時刻を固定する（確認の画面で待つ間に届いた物は、次回「新しい」になる）
-            started_ns = time.time_ns()
-            scan = batch.scan_mbd_directory(source_dir, out_dir, convert_all=convert_all, checkpoint=checkpoint,
-                                            scan_started_at_ns=started_ns)
+            started_ns = time.time_ns()  # 走査の開始時刻を固定する（確認の画面で待つ間に届いた物は、次回「新しい」になる）
+
+            def scan_work(_emit):
+                return batch.scan_mbd_directory(source_dir, out_dir, convert_all=convert_all, checkpoint=checkpoint,
+                                                scan_started_at_ns=started_ns)
+
+            started = self._start_job(scan_work, lambda scan, exc, tb: self._after_scan(scan, exc, tb, date_value),
+                                      status="Scanning the folder...", final=False)
+        except Exception as exc:  # noqa: BLE001 -- windowed の exe ではログが唯一の手がかり
+            self._report_job_error("Batch conversion", exc, traceback.format_exc())
+        finally:
+            if not started:
+                self.convert_all_var.set(False)
+
+    def _after_scan(self, scan, exc, tb, date_value) -> None:
+        """走査が終わった（主スレッド）。候補が無ければ案内、あれば確認の画面 -> 変換（別スレッド）。終わりで必ずチェックを戻す。"""
+        started = False
+        try:
+            if exc is not None:
+                self._report_job_error("Batch conversion", exc, tb)
+                return
             for line in batch.scan_report_lines(scan):
                 self._log(line)
-
             if not scan.to_convert:  # 起点も台帳も書かない
                 kept = batch.remaining_after(scan, batch.BatchReport(failed_items=[(i.path, i.reason) for i in scan.unreadable]))
                 if kept:
                     self._replace_list(kept)
                 messagebox.showinfo(APP_TITLE, batch.nothing_text(scan))
                 return
-
             for line in batch.date_lines(scan, date_value, dates.SOURCE_FIELD):
                 self._log(f"[INFO] recording date: {line}")
             if not messagebox.askyesno(f"{APP_TITLE} - Confirm Batch Conversion",
                                        batch.confirm_text(scan, date_value, dates.SOURCE_FIELD)):
                 return  # 「No」は何も書かない
-
             self._log(f"[INFO] Starting batch conversion for {len(scan.to_convert)} file(s)...")
 
-            def progress(idx: int, total: int, path: Path) -> None:
-                self._log(f"[{idx + 1}/{total}] Converting: {path.name}...")
-                self.root.update_idletasks()
+            def work(emit):
+                return batch.convert_unconverted(
+                    scan, log=emit.log, channel_map_data=self.channel_map_data, date=date_value, date_label=dates.SOURCE_FIELD,
+                    progress_cb=lambda idx, total, path: emit.log(f"[{idx + 1}/{total}] Converting: {path.name}..."),
+                    progress=emit.progress)
 
-            report = batch.convert_unconverted(scan, log=self._log, progress_cb=progress, channel_map_data=self.channel_map_data,
-                                               date=date_value, date_label=dates.SOURCE_FIELD)
+            started = self._start_job(work, lambda report, exc2, tb2: self._after_batch(scan, report, exc2, tb2),
+                                      status="Starting the conversion...")
+        except Exception as exc3:  # noqa: BLE001
+            self._report_job_error("Batch conversion", exc3, traceback.format_exc())
+        finally:
+            if not started:
+                self.convert_all_var.set(False)
+
+    def _after_batch(self, scan, report, exc, tb) -> None:
+        try:
+            if exc is not None:
+                self._report_job_error("Batch conversion", exc, tb)
+                return
             self._reload_map_tree()
             if not report.map_saved:
                 self._log("[WARN] Failed to save some channel map entries. Please re-save using the 'Save' button in the 'Channel Map' tab.")
@@ -482,11 +657,6 @@ class MbdGui:
                     self._log(f"  - {p.name}: {reason}")
             self._replace_list(batch.remaining_after(scan, report))
             messagebox.showinfo(APP_TITLE, batch.summary_text(report))
-        except Exception as exc:  # noqa: BLE001 -- windowed の exe ではログが唯一の手がかり
-            print(f"[FATAL EXCEPTION IN GUI] {exc}", file=sys.stderr, flush=True)
-            self._log(f"[ERROR] Batch conversion failed: {exc}")
-            self._log(traceback.format_exc())
-            messagebox.showerror(APP_TITLE, f"An error occurred during batch conversion:\n{exc}")
         finally:
             self.convert_all_var.set(False)
 
@@ -513,11 +683,18 @@ class MbdGui:
 
         btns = tk.Frame(frame)
         btns.pack(fill="x", padx=4, pady=4)
-        tk.Button(btns, text="Edit...", command=self._on_edit_row).pack(side="left", padx=2)
-        tk.Button(btns, text="Reset Row to Default", command=self._on_reset_row).pack(side="left", padx=2)
-        tk.Button(btns, text="Delete Row", command=self._on_delete_row).pack(side="left", padx=2)
-        tk.Button(btns, text="Reset Entire Map", command=self._on_reset_all).pack(side="left", padx=2)
-        tk.Button(btns, text="Save", command=self._on_save_map, bg="#2e7d32", fg="white").pack(side="right", padx=2)
+        self.edit_button = tk.Button(btns, text="Edit...", command=self._on_edit_row)
+        self.edit_button.pack(side="left", padx=2)
+        self.reset_row_button = tk.Button(btns, text="Reset Row to Default", command=self._on_reset_row)
+        self.reset_row_button.pack(side="left", padx=2)
+        self.delete_row_button = tk.Button(btns, text="Delete Row", command=self._on_delete_row)
+        self.delete_row_button.pack(side="left", padx=2)
+        self.reset_all_button = tk.Button(btns, text="Reset Entire Map", command=self._on_reset_all)
+        self.reset_all_button.pack(side="left", padx=2)
+        self.save_button = tk.Button(btns, text="Save", command=self._on_save_map, bg="#2e7d32", fg="white")
+        self.save_button.pack(side="right", padx=2)
+        # 変換中は対応表を触らせない（変換は同じ表を使い、終わりに未登録の行を足すため）
+        self._busy_widgets += [self.edit_button, self.reset_row_button, self.delete_row_button, self.reset_all_button, self.save_button]
         self._reload_map_tree()
 
     def _reload_map_tree(self) -> None:
@@ -538,6 +715,8 @@ class MbdGui:
         return sel[0] if sel else None
 
     def _on_edit_row(self) -> None:
+        if self._busy:
+            return
         raw_name = self._selected_name()
         if raw_name is None or self._refuse_if_protected(raw_name):
             return
@@ -557,6 +736,8 @@ class MbdGui:
         self._reload_map_tree()
 
     def _on_reset_row(self) -> None:
+        if self._busy:
+            return
         raw_name = self._selected_name()
         if raw_name is None or self._refuse_if_protected(raw_name):
             return
@@ -564,6 +745,8 @@ class MbdGui:
         self._reload_map_tree()
 
     def _on_delete_row(self) -> None:
+        if self._busy:
+            return
         raw_name = self._selected_name()
         if raw_name is None or self._refuse_if_protected(raw_name):
             return
@@ -582,6 +765,8 @@ class MbdGui:
         self._reload_map_tree()
 
     def _on_reset_all(self) -> None:
+        if self._busy:
+            return
         if not messagebox.askyesno(APP_TITLE, "Reset entire channel map to defaults. Are you sure?"):
             return
         self.channel_map_data = cmapmod.reset_all(self._load_seed(), current_data=self.channel_map_data)
@@ -594,6 +779,8 @@ class MbdGui:
         return {"schema": 1, "channels": {}}
 
     def _on_save_map(self) -> None:
+        if self._busy:
+            return
         map_rules.save_map_preserving_others(self.channel_map_data, self.deleted_rows)
         self.deleted_rows.clear()
         self.channel_map_data = map_rules.load_map()  # ディスクの最新（他プロセスが足した行を含む）を表示へ戻す

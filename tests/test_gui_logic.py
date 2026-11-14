@@ -163,6 +163,7 @@ def test_gui_convert_uses_the_loaded_map(tmp_path, monkeypatch):
         monkeypatch.setattr(gui.messagebox, "showinfo", lambda *a, **k: shown.append(a))
         monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a, **k: True)
         app._on_convert()
+        app.wait_idle()  # 変換は別スレッド（FB02）。終わるまで画面の更新を回して待つ
         assert shown and "Converted 1 of 1" in shown[0][1]
         mes = mr.load_mes(out / "synth.MES")
         assert mes["THP"] == pytest.approx(ms.expected()["THP"] * 2 + 1, abs=0.003)

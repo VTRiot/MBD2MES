@@ -16,6 +16,9 @@ _test_fixtures/
 out/
 scratch/
 
+# アニメーション GIF の作業置き場（生成ログに利用者名入りの絶対パスが入る。配る物は Pic/anim/busy.gif だけ）
+Pic/anim/work/
+
 # 利用者の設定・対応表（開発起動ではリポ直下にできる）と、exe のビルドの生成物
 /mbd2mes_config.json
 /channel_map.json

@@ -32,6 +32,7 @@ from . import lap_files
 from . import laps as lapmod
 from . import map_rules
 from . import mes_writer as mw
+from . import progress as prg
 from . import timeline as tl
 from .mbd_reader import SECONDS_PER_DAY, TICK_MS, MbdError, MbdFile, read_mbd
 
@@ -92,14 +93,35 @@ class ConvertResult:
 class ArraySource:
     """ddd_generator.build_entries に渡す入力の口（channel_meta／read_channel を持つ）。"""
 
-    def __init__(self, rows: list[tuple[str, str, int, np.ndarray]]):
+    def __init__(self, rows: list[tuple[str, str, int, np.ndarray]], on_read=None):
         self._rows = rows
+        self._on_read = on_read  # 1 本読むたびに (読んだ数, 全体) を知らせる（進み具合用）
+        self._reads = 0
 
     def channel_meta(self, path) -> list[dict]:  # noqa: ARG002
         return [{"name": n, "unit": u, "freq": float(r), "_index": i} for i, (n, u, r, _v) in enumerate(self._rows)]
 
     def read_channel(self, path, meta: dict) -> np.ndarray:  # noqa: ARG002
+        self._reads += 1
+        if self._on_read is not None:
+            self._on_read(self._reads, len(self._rows))
         return self._rows[meta["_index"]][3]
+
+
+class _NotifyingValues(dict):
+    """values_by_name の写し。mes_writer.write_reconstructed_mes は entry ごとに values_by_name[名前] を引くので、
+    その回数を数えて進み具合を知らせる（写した mes_writer を改変せずに、書き出しの中の進みを出す）。値は変えない。"""
+
+    def __init__(self, source: dict, on_get):
+        super().__init__(source)
+        self._on_get = on_get
+        self._gets = 0
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self._gets += 1
+        self._on_get(self._gets, len(self))
+        return value
 
 
 def sanitize_mes_name(stem: str) -> str:
@@ -175,18 +197,27 @@ def _build_record(res_input: Path, sha: str, mbd: MbdFile, name: str, t0_ms: int
 
 def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool = False,
                 date: datetime.date | None = None, channel_map_data: dict | None = None, log=None,
-                before_replace=None, date_label: str = "--date") -> ConvertResult:
+                before_replace=None, date_label: str = "--date", progress=None) -> ConvertResult:
     """MBD 1 本から MES 1 本を作る。GUI・CLI（D&D を含む）はすべてこの関数を通る。
 
     channel_map_data は対応表（channel_map の辞書）。None なら表を使わない（恒等。今までと同じ結果）。
     表を渡すと、改名・単位・一次変換（値 x Multiplier + Offset。MBD の換算の後）・任意名のコピーが効き、変換の後に未登録の行を自動で足す。
     表の検証（倍率・単位の整合性）は、出力先の確認・作成より前に終わる（失敗したら何も作らない）。
+    progress(step, frac) は省略できる（画面の進み具合用。step = 1..7・frac = その段の中の進み 0..1。progress.py）。
+    CLI は渡さないので出力は変わらない。結果には影響しない。
     before_replace(final_dir) は省略できるフック（一発変換のガード）。MES を公開する直前に呼ぶ。例外を投げると公開せず
     （既存の MES はそのまま・作業フォルダは finally で消える）、その例外がそのまま出る。None なら何もしない。
     """
     log = log or (lambda _t: None)
     mbd_path, out_dir = Path(mbd_path), Path(out_dir)
-    mbd = read_mbd(mbd_path)
+
+    def tick(step: int, frac: float = 0.0) -> None:
+        if progress is not None:
+            progress(step, frac)
+
+    tick(1, 0.0)
+    mbd = read_mbd(mbd_path, progress=lambda f: tick(1, f))
+    tick(1, 1.0)
     name = sanitize_mes_name(mes_name if mes_name is not None else mbd_path.stem)
     warnings: list[str] = []
 
@@ -200,6 +231,7 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
         for text in map_rules.protected_warnings(channel_map_data):
             warn(text)
     span_ms = mbd.duration_ms
+    tick(2, 0.0)
     plans, skipped, chan_warnings = chmod.plan_channels(mbd)
     for w in chan_warnings:
         warn(w)
@@ -209,13 +241,16 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
     narrow_src: list[str] = []
     narrow_lead: list[int] = []
     n_tick_grid = tl.sample_count(span_ms, tl.TICK_RATE_HZ)
-    for p in plans:
+    for i, p in enumerate(plans, start=1):
         values, lead = tl.hold_ticks(p.ticks, p.values, n_tick_grid, tl.TICK_RATE_HZ)
         narrow_rows.append((p.name, p.unit, tl.TICK_RATE_HZ, values))
         narrow_src.append(p.source)
         narrow_lead.append(lead)
+        tick(2, i / len(plans))
+    tick(2, 1.0)
 
     # ---- GPS（Latitude / Longitude は 32 bit、V_GPS は 16 bit）
+    tick(3, 0.0)
     g = mbd.gps
     utc0 = None
     wide_rows: list[tuple[str, str, int, np.ndarray]] = []
@@ -245,7 +280,9 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
     if not narrow_rows:
         raise ConvertError("no channel can be written (all channels are empty)")
 
-    source = ArraySource(narrow_rows)
+    tick(3, 1.0)
+    tick(4, 0.0)
+    source = ArraySource(narrow_rows, on_read=lambda k, total: tick(4, 0.9 * k / total))
     calls: list = []  # 呼ばれた順の (生の名前, 残した [(名前, 単位)], 各候補が任意名のコピーか)。entry と元の行の対応を作る
     dropped: list[tuple[str, str]] = []  # cp1252 で書けず、build_entries の前に外した候補
     scale_fn = map_rules.make_scaling_fn(channel_map_data)
@@ -302,6 +339,7 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
         layout.append((entry, (nm, unit, rate, values), "GPS block position (1/6,000,000 deg units)", 0, ""))
     skipped.extend(skipped_gen)
     ge.apply_marks(entries, var.marks)
+    tick(4, 1.0)
 
     # ---- 開始日時
     mtime_s = mbd_path.stat().st_mtime
@@ -311,6 +349,7 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
     start_local = hed_download.start_text(t0_ms)
 
     # ---- 書き出し先
+    tick(5, 0.0)
     final_dir = out_dir / f"{name}.MES"
     if final_dir.exists():
         if not force:
@@ -324,17 +363,24 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
     stage = Path(tempfile.mkdtemp(prefix=STAGE_PREFIX, dir=out_dir))
     keep_stage = False
     try:
-        staged = mw.write_reconstructed_mes(stage, name, entries, values_by_name)
+        values_view = _NotifyingValues(values_by_name, lambda k, total: tick(5, 0.95 * k / total))  # チャンネルを 1 本書くたびに知らせる
+        staged = mw.write_reconstructed_mes(stage, name, entries, values_view)
         (staged / f"{name}.HED").write_bytes(hed_download.render_hed(t0_ms, base_hz, var.write_hed and t_gps is not None))
+        tick(5, 1.0)
+        tick(6, 0.0)
         plan, lap_written = _write_laps(mbd, g, t_gps, staged, name, base_hz, span_ms, warn)
+        tick(6, 0.4)
         violations = di.check_ddd_invariants(staged / f"{name}.DDD", staged, name)
         if violations:
             raise InvariantViolationError(violations)
+        tick(6, 0.9)
         records = [ChannelRecord(e.name, e.unit, rate, e.divisor, len(values), e.bit_width, src, lead, note)
                    for e, (_n, _u, rate, values), src, lead, note in layout]
         record = _build_record(mbd_path, mbd.sha256, mbd, name, t0_ms, start_source, start_local, span_ms, base_hz,
                                records, skipped, warnings, utc0, gps_info, plan, violations, map_applied)
         (staged / RECORD_NAME).write_bytes(record.encode(RECORD_ENCODING))
+        tick(6, 1.0)
+        tick(7, 0.0)
         if before_replace is not None:
             before_replace(final_dir)  # 一発変換のガード: 走査のあとに外部が出力先を変えていたら例外で公開をやめる
         if final_dir.exists():
@@ -363,6 +409,7 @@ def convert_one(mbd_path, out_dir, *, mes_name: str | None = None, force: bool =
             channel_map_data["_has_unsaved"] = not map_saved
             if map_saved and added > 0:
                 log(f"Channel map auto-update: added {added} new channel(s).")
+    tick(7, 1.0)
     return ConvertResult(final_dir, name, t0_ms, start_source, span_ms, base_hz, records, skipped, warnings, violations,
                          record, plan, lap_written, mbd_path, mbd.sha256, map_saved, map_applied)
 

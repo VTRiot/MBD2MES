@@ -16,6 +16,7 @@ from . import convert as cv
 from . import dates
 from . import gps_entries as ge
 from . import map_rules
+from . import progress as prg
 from .mbd_reader import MbdError
 
 EXIT_OK, EXIT_FAIL, EXIT_USAGE, EXIT_CORRUPT = 0, 1, 2, 4
@@ -43,42 +44,60 @@ def target_mes_dir(path, out_dir, mes_name: str | None = None) -> Path:
 
 def convert_many(paths, out_dir, *, mes_name: str | None = None, force: bool = False, date: datetime.date | None = None,
                  channel_map_data=USE_DEFAULT_MAP, log=None, confirm_overwrite=None, before_replace=None,
-                 date_label: str = dates.SOURCE_OPTION) -> Outcome:
+                 date_label: str = dates.SOURCE_OPTION, progress=None, file_offset: int = 0, file_total: int | None = None) -> Outcome:
     """paths を順に convert_one する。1 件の失敗で止めない。
 
     confirm_overwrite(入力, 既存の MES フォルダ) -> bool: 同名の MES があり force でないとき、置き換えてよいかを聞く関数。
     None なら聞かず、convert_one が「already exists」で失敗させる（CLI の既定）。False を返した入力は declined に入り、変換しない。
     before_replace(MES フォルダ) は convert_one へそのまま渡す（一発変換のガード）。
+    progress(ProgressEvent): 省略できる（画面の進み具合用）。1 本ごとに段の進みを全体の % にして渡す。file_offset・file_total は、
+    呼び出し側が 1 本ずつ呼ぶとき（一発変換）の File k/n の数え方（k = file_offset + このループの番号）。
     date は明示の記録日（CLI の --date・GUI の欄）で、あれば全部の入力に使う（date_label = その出どころの名前）。
     None なら 1 本ずつ、ファイル名から読む（dates.choose）。読めなければ更新時刻（convert_one が警告する）。
     """
     log = log or (lambda _t: None)
     cmap = map_rules.load_map() if channel_map_data is USE_DEFAULT_MAP else channel_map_data
     out = Outcome()
-    for path in map(Path, paths):
+    paths = [Path(p) for p in paths]
+    total = file_total if file_total is not None else len(paths)
+    for idx, path in enumerate(paths):
         this_force = force
+        file_index = file_offset + idx + 1
+
+        def report(step: int, frac: float, _fi: int = file_index, _name: str = path.name) -> None:
+            if progress is not None:
+                progress(prg.make_event(_fi, total, _name, step, frac))
+
+        def finish(_report=report) -> None:  # 失敗・見送りでも、この 1 本は終わったので全体の進みを進める
+            _report(prg.STEP_COUNT, 1.0)
+
         mes_dir = target_mes_dir(path, out_dir, mes_name)
         if not force and confirm_overwrite is not None and mes_dir.exists():
             if not confirm_overwrite(path, mes_dir):
                 out.declined.append(path)
                 log(f"[SKIP] {path.name}: {mes_dir.name} already exists (not replaced)")
+                finish()
                 continue
             this_force = True
         choice = dates.choose(path, date, date_label)
         log(f"[INFO] {path.name}: recording date {choice.describe()}")
         try:
             res = cv.convert_one(path, out_dir, mes_name=mes_name, force=this_force, date=choice.date, channel_map_data=cmap, log=log,
-                                 before_replace=before_replace, date_label=choice.source)
+                                 before_replace=before_replace, date_label=choice.source,
+                                 progress=report if progress is not None else None)
         except MbdError as exc:
             log(f"[ERROR] {path.name}: {exc}")
             out.failed.append((path, str(exc), EXIT_CORRUPT))
+            finish()
         except (cv.ConvertError, ge.NegativeCoordinateError, OSError, ValueError) as exc:
             log(f"[ERROR] {path.name}: {exc}")
             out.failed.append((path, str(exc), EXIT_FAIL))
+            finish()
         except Exception as exc:  # noqa: BLE001 -- 1 本の想定外の失敗で残りを止めない
             log(f"[ERROR] {path.name}: {exc!r}")
             log(traceback.format_exc())
             out.failed.append((path, repr(exc), EXIT_FAIL))
+            finish()
         else:
             out.results.append(res)
     return out

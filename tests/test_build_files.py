@@ -145,3 +145,20 @@ def test_no_personal_strings_in_new_files():
         for n in needles:
             assert n not in text, (p.relative_to(ROOT).as_posix(), n)
     json.loads((ROOT / "channel_map.seed.json").read_text(encoding="utf-8"))
+
+
+def test_spec_bundles_the_busy_gif_only_when_it_exists(tmp_path):
+    """FB02: 窓の端の GIF は、あれば busy.gif として _MEIPASS 直下へ同梱し、無ければ何も足さない（アプリは GIF なしで動く）。"""
+    fake = tmp_path / "dist_build"
+    fake.mkdir()
+    (tmp_path / "Pic" / "ICON").mkdir(parents=True)
+    shutil.copy2(ICO, tmp_path / "Pic" / "ICON" / "MBD2MES.ico")
+    without = {Path(s).name: d for s, d in _exec_spec(fake)["a"].kw["datas"]}
+    assert "busy.gif" not in without and set(without) == {"mbd2mes_config.seed.json", "channel_map.seed.json", "MBD2MES.ico"}
+    (tmp_path / "Pic" / "anim").mkdir()
+    (tmp_path / "Pic" / "anim" / "busy.gif").write_bytes(b"GIF89a")
+    with_gif = {Path(s).name: d for s, d in _exec_spec(fake)["a"].kw["datas"]}
+    assert with_gif["busy.gif"] == "." and set(with_gif) == set(without) | {"busy.gif"}
+    from mbd2mes import busy_animation
+
+    assert busy_animation.GIF_FROZEN_NAME == "busy.gif" and busy_animation.GIF_RELATIVE_PATH[-1] == "busy.gif"
