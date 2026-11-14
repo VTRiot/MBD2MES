@@ -121,7 +121,7 @@ def test_gui_builds_and_loads_the_icon_at_startup(tmp_path, monkeypatch):
     try:
         app = gui.MbdGui(root)
         root.update_idletasks()
-        assert root.title() == "MBD2MES v0.2.0 (dev)"
+        assert root.title() == "MBD2MES v0.3.0 (dev)"
         assert app._apply_window_icon() is True  # 起動時にアイコンを読み込める（iconbitmap が通る）
         names = {app.tree.item(i, "values")[0] for i in app.tree.get_children()}
         assert names == set(SEED["channels"])  # 表に seed の行が出る

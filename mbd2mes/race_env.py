@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
+# 由来の記録は、実行時に exe へ入らないよう、docstring でなくコメントにしてある（開発のパスを exe に入れない。REL01）。
+# [ORIGIN] copied, then adapted (2026-10-18)
+#   source path : C:\_Prog\GMN_Gemini\04_Bike_Car\Ld2MesConverter\[MoTeC]Ld2MesConverter\race_env.py
+#   source SHA-256 (as copied): 4b465d87021abbc4cb6d22b491ff9d04fb11dc1a85adf31243596199cfc94b6b
+#   derived on  : 2026-10-17 (LINK_LLGX2MES)
+#   changes     : detect_output_dir の RACE.INI 読み込みだけ。参考では、cp1252 で読めないバイト（例: cp932 の「ー」の 0x81）や
+#                 値の中の % で例外が呼び出し側へ抜け、GUI が起動時・Reload 時に黙って止まった（実測）。
+#                 % は補間しない（interpolation=None。INI の値に補間の意味は無い）、読めないバイトは「検出不能」として返す。
+#                 文字コードは参考どおり cp1252 のまま（2D が RACE.INI を何の文字コードで書くかは未確認）。
 r"""
-[ORIGIN] copied, then adapted (2026-10-18)
-  source path : C:\_Prog\GMN_Gemini\04_Bike_Car\Ld2MesConverter\[MoTeC]Ld2MesConverter\race_env.py
-  source SHA-256 (as copied): 4b465d87021abbc4cb6d22b491ff9d04fb11dc1a85adf31243596199cfc94b6b
-  derived on  : 2026-10-17 (LINK_LLGX2MES)
-  changes     : detect_output_dir の RACE.INI 読み込みだけ。参考では、cp1252 で読めないバイト（例: cp932 の「ー」の 0x81）や
-                値の中の % で例外が呼び出し側へ抜け、GUI が起動時・Reload 時に黙って止まった（実測）。
-                % は補間しない（interpolation=None。INI の値に補間の意味は無い）、読めないバイトは「検出不能」として返す。
-                文字コードは参考どおり cp1252 のまま（2D が RACE.INI を何の文字コードで書くかは未確認）。
 race_env.py -- 2D RACE.INI から出力先候補を検出する（LD2MES_Converter Phase2 CP2 A-5）。
 
 読み取り専用。RACE.INI を書き換えることは一切しない。

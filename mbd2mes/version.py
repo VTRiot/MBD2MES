@@ -4,13 +4,13 @@
 RCZ2MES の version_info.py（commit 5b31da8）からの写し（改変: APP_NAME・APP_VERSION・説明。パッケージ内の位置）。
 
 形:
-    exe          : MBD2MES v0.2.0 (543b8e6, built 2026-11-14)
-    exe(未コミット): MBD2MES v0.2.0 (543b8e6+dirty, built 2026-11-14)
-    git が無くて取れなかった exe: MBD2MES v0.2.0 (unknown, built 2026-11-14)
-    開発起動     : MBD2MES v0.2.0 (dev)
+    exe          : MBD2MES v0.3.0 (543b8e6, built 2026-11-14)
+    exe(未コミット): MBD2MES v0.3.0 (543b8e6+dirty, built 2026-11-14)
+    git が無くて取れなかった exe: MBD2MES v0.3.0 (unknown, built 2026-11-14)
+    開発起動     : MBD2MES v0.3.0 (dev)
 
 コミットとビルド日は、exe を作るたびに `tools/write_build_info.py` が `dist_build/_gen/_build_info.py` へ書く
-（開発起動の sys.path には入らない）。版の番号（APP_VERSION）は発注で上げる（0.1.0 = 最初の動く版の CLI、0.2.0 = GUI・対応表・exe）。
+（開発起動の sys.path には入らない）。版の番号（APP_VERSION）は発注で上げる（0.1.0 = 最初の動く版の CLI、0.2.0 = GUI・対応表・exe、0.3.0 = 変換中の進捗ダイアログと Cancel・一発変換・イベントフォルダ）。
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import re
 import sys
 
 APP_NAME = "MBD2MES"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 

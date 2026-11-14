@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MBD2MES README</title>
+<style>
+body { font-family: "Meiryo", "Yu Gothic", "Segoe UI", sans-serif; max-width: 880px; margin: 2em auto; padding: 0 1em; line-height: 1.75; color: #222; background: #fff; }
+h1 { border-bottom: 3px solid #2b6cb0; padding-bottom: 0.3em; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 0.2em; margin-top: 2.2em; }
+h3 { margin-top: 1.6em; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #ccc; padding: 0.4em 0.6em; text-align: left; vertical-align: top; }
+th { background: #f0f4f8; }
+code { background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; font-family: Consolas, monospace; }
+li { margin: 0.3em 0; }
+figure { margin: 1em 0; }
+figure img { max-width: 100%; height: auto; border: 1px solid #ccc; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+figcaption { font-size: 0.9em; color: #555; margin-top: 0.3em; }
+blockquote { margin: 1em 0; padding: 0.6em 1em; border-left: 4px solid #2b6cb0; background: #f4f8fc; }
+.ver { color: #555; }
+</style>
+</head>
+<body>
+<h1>MBD2MES</h1>
+<p class="ver">説明している版: MBD2MES v0.3.0</p>
+
+<p>MBD2MES は、HRC の車両ロガー MBDA2 が書き出す <code>.MBD</code> ファイルを、2D Analyzer で開ける <code>.MES</code> フォルダに変換するソフトです。チャンネルのデータと、GPS の軌跡（2D の地図）が <code>.MES</code> に入ります。</p>
+
+<h2>必要なもの</h2>
+<ul>
+<li>Windows 11（Windows 10 でも動くはずですが、確かめていません）。</li>
+<li><code>mbd2mes.exe</code> が 1 個。インストーラーはなく、Python も要りません。</li>
+<li>MBDA2 が書き出した <code>.MBD</code> と、結果を開くための 2D Analyzer。</li>
+</ul>
+
+<h2>最初の変換</h2>
+<ol>
+<li><code>mbd2mes.exe</code> を、好きなフォルダ（例: <code>C:\MBD2MES</code>）に置きます。設定ファイルもこの exe の隣に作られるので、書き込める場所に置いてください。ZIP の中から直接動かさないでください。</li>
+<li><code>mbd2mes.exe</code> をダブルクリックします。画面が開き、タイトルバーに版の名前が出ます（<code>MBD2MES v0.3.0</code> を含みます）。</li>
+<li>知らないプログラムとして Windows の警告が出ることがあります（この exe には署名がありません）。出どころが信頼できるなら、実行を選べます。</li>
+<li><code>Convert</code> タブの <code>Browse Files...</code> を押して <code>.MBD</code> を選びます（複数選べます）。</li>
+<li><code>Output Directory</code> を確かめます。2D のイベントフォルダでなければ <code>Change...</code> で選びます。</li>
+<li><code>Convert</code> を押します。変換中は進捗のダイアログが出ます。終わるとダイアログが自動で閉じ、結果が <code>Log</code> に出ます。</li>
+<li>できた <code>.MES</code> フォルダを 2D Analyzer で開きます。</li>
+</ol>
+<p>変換の結果は、出力先の中の、入力ファイルと同じ名前の <code>.MES</code> フォルダに作られます（例: <code>sample.MBD</code> から <code>sample.MES</code>）。同じ名前の <code>.MES</code> が既にあるときは、変換が成功したときだけ入れ替わります。失敗したときは、前の <code>.MES</code> はそのまま残ります。</p>
+
+<h2>Channel Map（名前・単位・一次変換）</h2>
+<p><code>Channel Map</code> タブで、チャンネルごとに、2D に出る名前・単位・一次変換（値 × 倍率 + オフセット）を決められます。<code>Convert</code> で新しいチャンネルに出会うと、一覧に自動で追加されます。</p>
+<table>
+<tr><th>項目</th><th>意味</th></tr>
+<tr><td>MBD Name</td><td>MBD に入っているチャンネルの名前（読み取り専用）</td></tr>
+<tr><td>Unit</td><td>2D に出る単位。<code>Passthrough MBD unit</code> にチェックすると、MBD の単位をそのまま使います</td></tr>
+<tr><td>Custom Name</td><td>2D に出す名前。空なら MBD の名前を使います</td></tr>
+<tr><td>Multiplier / Offset</td><td>一次変換。2D に出る値 = MBD の値 × Multiplier + Offset</td></tr>
+</table>
+<ul>
+<li>行を選んで <code>Edit...</code> で編集します。<code>Filter:</code> で行を絞り込めます。</li>
+<li><code>Reset Row to Default</code> は 1 行を初期値へ、<code>Delete Row</code> は 1 行の削除、<code>Reset Entire Map</code> は全体を初期値へ戻します。</li>
+<li>変更は <code>Save</code> を押すまで保存されません。</li>
+</ul>
+
+<h2>Convert Unconverted（まだ変換していない物を一度に）</h2>
+<p>前に <code>Browse Files...</code> で選んだ <code>.MBD</code> のフォルダを調べ、まだ変換していない物をまとめて変換します。調べる → 確認の画面（一覧）→ 変換、の順です。</p>
+<ul>
+<li><b>最初の 1 回</b>は何も変換せず、そのフォルダの「起点」だけを記録します。次回から、その時刻より後に届いた・変わった <code>.MBD</code> だけが対象になります。</li>
+<li>既にあるファイルも変換したいときは、<code>Convert all .MBD files</code> にチェックを入れて押すか、<code>Convert</code> で選びます。チェックは、実行の後に自動でオフへ戻ります。</li>
+<li>変換した物は、出力先の台帳（<code>.mbd2mes_manifest.json</code>）に記録されます。外から出力先が変えられていたファイルは、上書きしません。</li>
+</ul>
+
+<h2>Use This（イベントフォルダの候補）</h2>
+<p>2D WinRace で今選んでいるイベントフォルダが分かるときは、<code>Detected candidate</code> として候補が出ます。<code>Use This</code> を押すと、それを出力先にします。候補が変わったら <code>Reload</code> で読み直します。見つからないときは <code>Not detected</code> と出て、<code>Use This</code> は押せません（そのときは <code>Change...</code> で選んでください）。</p>
+
+<h2>日付の決まり方</h2>
+<p><code>.MBD</code> の中に記録の日付は入っていません。そこで、2D の HED に書く日付は次の順で決めます（上が優先）。</p>
+<ol>
+<li><code>Recording Date (HED)</code> の欄に <code>YYYY-MM-DD</code> と書いたとき、それを全部の入力に使います。</li>
+<li>空なら、ファイル名から読みます。対応する書き方: <code>2026-11-08</code>・<code>2026.11.08</code>・<code>26.11.8</code>・<code>20261108</code> など（年は 2000〜2099）。</li>
+<li>どちらでもなければ、ファイルの更新時刻を使います。このときは、確認の画面とログに警告が出ます。ダウンロードやコピーをした日など、レースの日と違うことがあるので、日付の欄に書くか、ファイル名に日付を入れてください。</li>
+</ol>
+
+<h2>変換中のダイアログと Cancel</h2>
+<figure>
+<img alt="変換中の進捗ダイアログ" src="data:image/png;base64,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">
+<figcaption>変換中のダイアログ（タイトルは <code>Converting...</code>）</figcaption>
+</figure>
+<ul>
+<li>上に、何本中の何本目か（<code>File k/n</code>）、ファイル名、段（<code>Step k/7</code>）が出ます。真ん中が % のバー、その下が経過時間と残りの目安です。残りの目安は、始めの数秒は <code>calculating...</code> と出ます。</li>
+<li>変換の間、右の絵が動きます。ダイアログが開いている間、親の画面は操作できません。</li>
+<li><b>Cancel</b>（または右上の × ・Esc キー）で、なるべく早く止まります。止まるまで少しかかります（<code>Cancelling...</code> と出ます）。</li>
+<li>止めても、作りかけの <code>.MES</code> は残らず、既にあった <code>.MES</code> は変わりません。止めたファイルは「変換済み」と記録されないので、Convert Unconverted でもう一度対象になります。</li>
+<li>複数本のとき、Cancel で残りはやめます。終わったファイルは変換済みのままです。どこまで終わったかは <code>Log</code> に出ます。</li>
+<li>出力先へ入れ替えている最中（ごく短い間）は止めず、入れ替えが終わってから止まります。そのときはログにそう出ます。</li>
+<li>変換中に、メインの窓の × で閉じることはできません（案内が出ます）。先に Cancel するか、終わるのを待ってください。</li>
+</ul>
+
+<h2>設定の置き場所</h2>
+<p>設定と対応表は、<b><code>mbd2mes.exe</code> の隣</b>の次のファイルに保存されます。</p>
+<table>
+<tr><th>ファイル</th><th>中身</th></tr>
+<tr><td><code>mbd2mes_config.json</code></td><td>出力先・最後に選んだ <code>.MBD</code> のフォルダ・フォルダごとの起点</td></tr>
+<tr><td><code>channel_map.json</code></td><td>Channel Map（名前・単位・一次変換）</td></tr>
+</table>
+<p>exe のフォルダに書けないときは、<code>%LOCALAPPDATA%\MBD2MES\</code> に作られます。設定の場所は、<code>Other</code> タブの <code>Settings folder</code> に出ます。</p>
+
+<h2>版を上げるとき</h2>
+<ol>
+<li>MBD2MES を閉じます（動いている間は <code>mbd2mes.exe</code> を置き換えられません）。</li>
+<li>新しい <code>mbd2mes.exe</code> を、今の <code>mbd2mes.exe</code> に上書きでコピーします。配布の ZIP に設定ファイルは入っていないので、exe の隣の設定と対応表はそのまま使われます。</li>
+<li>起動して、タイトルバーまたは <code>Other</code> タブの版の名前を確かめます。</li>
+</ol>
+<p>念のため、上書きする前に、exe の隣の <code>mbd2mes_config.json</code> と <code>channel_map.json</code> を別の場所へ控えておくと安心です。</p>
+
+<h2>困ったとき</h2>
+<table>
+<tr><th>症状</th><th>確かめること</th></tr>
+<tr><td>起動すると Windows の警告が出る</td><td>exe に署名がないためです。出どころが信頼できるなら、実行を選べます。</td></tr>
+<tr><td>2D で日付が思った日と違う</td><td>日付の決まり方の 3 番（更新時刻）になっていないか、<code>Log</code> の警告を見ます。日付の欄に書き直して、もう一度変換します。</td></tr>
+<tr><td>Convert Unconverted が「起点を記録した」とだけ言って変換しない</td><td>最初の 1 回の動きです。既にあるファイルは <code>Convert all .MBD files</code> にチェックして押すか、<code>Convert</code> で選びます。</td></tr>
+<tr><td>設定を替えたのに戻る</td><td><code>Channel Map</code> は <code>Save</code> を押すまで保存されません。</td></tr>
+<tr><td>変換が失敗する</td><td><code>Log</code> に原因が出ます。失敗しても、前の <code>.MES</code> は残ります。<code>.MBD</code> がコピーの途中でないか（MBDA2 の書き出しが終わっているか）も確かめます。</td></tr>
+<tr><td>設定を最初からやり直したい</td><td>MBD2MES を閉じて、exe の隣の <code>mbd2mes_config.json</code> と <code>channel_map.json</code> を別の場所へ移し、起動し直します（初期値から作り直されます）。</td></tr>
+</table>
+
+<h2>版の変更点</h2>
+<h3>0.3.0</h3>
+<ul>
+<li>変換中に進捗のダイアログ（<code>Converting...</code>）が出る。段ごとの %・経過時間と残りの目安・右の余白の絵。終わると自動で閉じる。</li>
+<li><code>Cancel</code>（ボタン・×・Esc）で変換を止められる。作りかけは残さず、既にある <code>.MES</code> は変えない。</li>
+<li>変換を別スレッドで回すようにし、変換中も画面が止まらない。</li>
+</ul>
+<h3>0.2.0</h3>
+<ul>
+<li>画面（GUI）・Channel Map（名前・単位・一次変換）・exe。</li>
+<li><code>Convert Unconverted</code>（まだ変換していない物を一度に）。</li>
+<li>イベントフォルダの候補（<code>Use This</code>）。</li>
+<li>記録の日付をファイル名から自動で決める。</li>
+</ul>
+<h3>0.1.0</h3>
+<ul>
+<li>最初の動く版（コマンドラインの変換器）。</li>
+</ul>
+</body>
+</html>

@@ -116,6 +116,8 @@ def main() -> int:
     root = tk.Tk()
     root.withdraw()
     root.title("MBD2MES")
+    from mbd2mes.gui import resolve_icon_path
+    root.iconbitmap(default=str(resolve_icon_path()))  # 本物と同じ窓のアイコン
     root.geometry(f"900x640+{OFFSCREEN}+{OFFSCREEN}")  # 親窓: 画面の外
     root.attributes("-toolwindow", True)
     root.update_idletasks()
@@ -136,7 +138,7 @@ def main() -> int:
             ex = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
             user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE)  # アクティブにしない（タスクバーの形は本物のまま）
             d.update()
-            ev = prg.make_event(2, 5, "26.11.8鈴鹿サンデーR4決勝.MBD", 1, 0.45)
+            ev = prg.make_event(2, 5, "sample.MBD", 1, 0.45)
             d.update_progress(ev)
             clock[0] = 1000.0 + 24
             if cancel:

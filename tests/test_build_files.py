@@ -79,7 +79,7 @@ def test_dirty_pathspecs_cover_what_goes_into_the_exe():
 
 def test_git_calls_in_tools_are_read_only():
     forbidden = {"status", "add", "commit", "push", "pull", "checkout", "reset", "stash", "rebase", "merge", "branch", "rev-parse"}
-    allowed = {"log", "diff", "ls-files", "show"}
+    allowed = {"log", "diff", "ls-files", "show", "merge-base"}
     for path in (ROOT / "tools").glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -96,10 +96,10 @@ def test_git_calls_in_tools_are_read_only():
 def test_version_string_forms():
     from mbd2mes import version as v
 
-    assert v.format_version(False, None) == "MBD2MES v0.2.0 (dev)"
-    assert v.format_version(True, {"commit": "abc1234", "dirty": True, "built": "2026-11-14"}) == "MBD2MES v0.2.0 (abc1234+dirty, built 2026-11-14)"
-    assert v.format_version(True, {"commit": "abc1234", "dirty": False, "built": "2026-11-14"}) == "MBD2MES v0.2.0 (abc1234, built 2026-11-14)"
-    assert v.format_version(True, None) == "MBD2MES v0.2.0 (unknown, built unknown)"
+    assert v.format_version(False, None) == "MBD2MES v0.3.0 (dev)"
+    assert v.format_version(True, {"commit": "abc1234", "dirty": True, "built": "2026-11-14"}) == "MBD2MES v0.3.0 (abc1234+dirty, built 2026-11-14)"
+    assert v.format_version(True, {"commit": "abc1234", "dirty": False, "built": "2026-11-14"}) == "MBD2MES v0.3.0 (abc1234, built 2026-11-14)"
+    assert v.format_version(True, None) == "MBD2MES v0.3.0 (unknown, built unknown)"
     assert v.is_well_formed_version(v.APP_VERSION)
 
 

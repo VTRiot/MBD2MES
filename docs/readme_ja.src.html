@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MBD2MES README</title>
+<style>
+body { font-family: "Meiryo", "Yu Gothic", "Segoe UI", sans-serif; max-width: 880px; margin: 2em auto; padding: 0 1em; line-height: 1.75; color: #222; background: #fff; }
+h1 { border-bottom: 3px solid #2b6cb0; padding-bottom: 0.3em; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: 0.2em; margin-top: 2.2em; }
+h3 { margin-top: 1.6em; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #ccc; padding: 0.4em 0.6em; text-align: left; vertical-align: top; }
+th { background: #f0f4f8; }
+code { background: #f0f0f0; padding: 0.1em 0.3em; border-radius: 3px; font-family: Consolas, monospace; }
+li { margin: 0.3em 0; }
+figure { margin: 1em 0; }
+figure img { max-width: 100%; height: auto; border: 1px solid #ccc; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+figcaption { font-size: 0.9em; color: #555; margin-top: 0.3em; }
+blockquote { margin: 1em 0; padding: 0.6em 1em; border-left: 4px solid #2b6cb0; background: #f4f8fc; }
+.ver { color: #555; }
+</style>
+</head>
+<body>
+<h1>MBD2MES</h1>
+<p class="ver">説明している版: {{VERSION}}</p>
+
+<p>MBD2MES は、HRC の車両ロガー MBDA2 が書き出す <code>.MBD</code> ファイルを、2D Analyzer で開ける <code>.MES</code> フォルダに変換するソフトです。チャンネルのデータと、GPS の軌跡（2D の地図）が <code>.MES</code> に入ります。</p>
+
+<h2>必要なもの</h2>
+<ul>
+<li>Windows 11（Windows 10 でも動くはずですが、確かめていません）。</li>
+<li><code>mbd2mes.exe</code> が 1 個。インストーラーはなく、Python も要りません。</li>
+<li>MBDA2 が書き出した <code>.MBD</code> と、結果を開くための 2D Analyzer。</li>
+</ul>
+
+<h2>最初の変換</h2>
+<ol>
+<li><code>mbd2mes.exe</code> を、好きなフォルダ（例: <code>C:\MBD2MES</code>）に置きます。設定ファイルもこの exe の隣に作られるので、書き込める場所に置いてください。ZIP の中から直接動かさないでください。</li>
+<li><code>mbd2mes.exe</code> をダブルクリックします。画面が開き、タイトルバーに版の名前が出ます（<code>{{VERSION}}</code> を含みます）。</li>
+<li>知らないプログラムとして Windows の警告が出ることがあります（この exe には署名がありません）。出どころが信頼できるなら、実行を選べます。</li>
+<li><code>Convert</code> タブの <code>Browse Files...</code> を押して <code>.MBD</code> を選びます（複数選べます）。</li>
+<li><code>Output Directory</code> を確かめます。2D のイベントフォルダでなければ <code>Change...</code> で選びます。</li>
+<li><code>Convert</code> を押します。変換中は進捗のダイアログが出ます。終わるとダイアログが自動で閉じ、結果が <code>Log</code> に出ます。</li>
+<li>できた <code>.MES</code> フォルダを 2D Analyzer で開きます。</li>
+</ol>
+<p>変換の結果は、出力先の中の、入力ファイルと同じ名前の <code>.MES</code> フォルダに作られます（例: <code>sample.MBD</code> から <code>sample.MES</code>）。同じ名前の <code>.MES</code> が既にあるときは、変換が成功したときだけ入れ替わります。失敗したときは、前の <code>.MES</code> はそのまま残ります。</p>
+
+<h2>Channel Map（名前・単位・一次変換）</h2>
+<p><code>Channel Map</code> タブで、チャンネルごとに、2D に出る名前・単位・一次変換（値 × 倍率 + オフセット）を決められます。<code>Convert</code> で新しいチャンネルに出会うと、一覧に自動で追加されます。</p>
+<table>
+<tr><th>項目</th><th>意味</th></tr>
+<tr><td>MBD Name</td><td>MBD に入っているチャンネルの名前（読み取り専用）</td></tr>
+<tr><td>Unit</td><td>2D に出る単位。<code>Passthrough MBD unit</code> にチェックすると、MBD の単位をそのまま使います</td></tr>
+<tr><td>Custom Name</td><td>2D に出す名前。空なら MBD の名前を使います</td></tr>
+<tr><td>Multiplier / Offset</td><td>一次変換。2D に出る値 = MBD の値 × Multiplier + Offset</td></tr>
+</table>
+<ul>
+<li>行を選んで <code>Edit...</code> で編集します。<code>Filter:</code> で行を絞り込めます。</li>
+<li><code>Reset Row to Default</code> は 1 行を初期値へ、<code>Delete Row</code> は 1 行の削除、<code>Reset Entire Map</code> は全体を初期値へ戻します。</li>
+<li>変更は <code>Save</code> を押すまで保存されません。</li>
+</ul>
+
+<h2>Convert Unconverted（まだ変換していない物を一度に）</h2>
+<p>前に <code>Browse Files...</code> で選んだ <code>.MBD</code> のフォルダを調べ、まだ変換していない物をまとめて変換します。調べる → 確認の画面（一覧）→ 変換、の順です。</p>
+<ul>
+<li><b>最初の 1 回</b>は何も変換せず、そのフォルダの「起点」だけを記録します。次回から、その時刻より後に届いた・変わった <code>.MBD</code> だけが対象になります。</li>
+<li>既にあるファイルも変換したいときは、<code>Convert all .MBD files</code> にチェックを入れて押すか、<code>Convert</code> で選びます。チェックは、実行の後に自動でオフへ戻ります。</li>
+<li>変換した物は、出力先の台帳（<code>.mbd2mes_manifest.json</code>）に記録されます。外から出力先が変えられていたファイルは、上書きしません。</li>
+</ul>
+
+<h2>Use This（イベントフォルダの候補）</h2>
+<p>2D WinRace で今選んでいるイベントフォルダが分かるときは、<code>Detected candidate</code> として候補が出ます。<code>Use This</code> を押すと、それを出力先にします。候補が変わったら <code>Reload</code> で読み直します。見つからないときは <code>Not detected</code> と出て、<code>Use This</code> は押せません（そのときは <code>Change...</code> で選んでください）。</p>
+
+<h2>日付の決まり方</h2>
+<p><code>.MBD</code> の中に記録の日付は入っていません。そこで、2D の HED に書く日付は次の順で決めます（上が優先）。</p>
+<ol>
+<li><code>Recording Date (HED)</code> の欄に <code>YYYY-MM-DD</code> と書いたとき、それを全部の入力に使います。</li>
+<li>空なら、ファイル名から読みます。対応する書き方: <code>2026-11-08</code>・<code>2026.11.08</code>・<code>26.11.8</code>・<code>20261108</code> など（年は 2000〜2099）。</li>
+<li>どちらでもなければ、ファイルの更新時刻を使います。このときは、確認の画面とログに警告が出ます。ダウンロードやコピーをした日など、レースの日と違うことがあるので、日付の欄に書くか、ファイル名に日付を入れてください。</li>
+</ol>
+
+<h2>変換中のダイアログと Cancel</h2>
+<figure>
+<img alt="変換中の進捗ダイアログ" src="{{IMG:progress_dialog}}">
+<figcaption>変換中のダイアログ（タイトルは <code>Converting...</code>）</figcaption>
+</figure>
+<ul>
+<li>上に、何本中の何本目か（<code>File k/n</code>）、ファイル名、段（<code>Step k/7</code>）が出ます。真ん中が % のバー、その下が経過時間と残りの目安です。残りの目安は、始めの数秒は <code>calculating...</code> と出ます。</li>
+<li>変換の間、右の絵が動きます。ダイアログが開いている間、親の画面は操作できません。</li>
+<li><b>Cancel</b>（または右上の × ・Esc キー）で、なるべく早く止まります。止まるまで少しかかります（<code>Cancelling...</code> と出ます）。</li>
+<li>止めても、作りかけの <code>.MES</code> は残らず、既にあった <code>.MES</code> は変わりません。止めたファイルは「変換済み」と記録されないので、Convert Unconverted でもう一度対象になります。</li>
+<li>複数本のとき、Cancel で残りはやめます。終わったファイルは変換済みのままです。どこまで終わったかは <code>Log</code> に出ます。</li>
+<li>出力先へ入れ替えている最中（ごく短い間）は止めず、入れ替えが終わってから止まります。そのときはログにそう出ます。</li>
+<li>変換中に、メインの窓の × で閉じることはできません（案内が出ます）。先に Cancel するか、終わるのを待ってください。</li>
+</ul>
+
+<h2>設定の置き場所</h2>
+<p>設定と対応表は、<b><code>mbd2mes.exe</code> の隣</b>の次のファイルに保存されます。</p>
+<table>
+<tr><th>ファイル</th><th>中身</th></tr>
+<tr><td><code>mbd2mes_config.json</code></td><td>出力先・最後に選んだ <code>.MBD</code> のフォルダ・フォルダごとの起点</td></tr>
+<tr><td><code>channel_map.json</code></td><td>Channel Map（名前・単位・一次変換）</td></tr>
+</table>
+<p>exe のフォルダに書けないときは、<code>%LOCALAPPDATA%\MBD2MES\</code> に作られます。設定の場所は、<code>Other</code> タブの <code>Settings folder</code> に出ます。</p>
+
+<h2>版を上げるとき</h2>
+<ol>
+<li>MBD2MES を閉じます（動いている間は <code>mbd2mes.exe</code> を置き換えられません）。</li>
+<li>新しい <code>mbd2mes.exe</code> を、今の <code>mbd2mes.exe</code> に上書きでコピーします。配布の ZIP に設定ファイルは入っていないので、exe の隣の設定と対応表はそのまま使われます。</li>
+<li>起動して、タイトルバーまたは <code>Other</code> タブの版の名前を確かめます。</li>
+</ol>
+<p>念のため、上書きする前に、exe の隣の <code>mbd2mes_config.json</code> と <code>channel_map.json</code> を別の場所へ控えておくと安心です。</p>
+
+<h2>困ったとき</h2>
+<table>
+<tr><th>症状</th><th>確かめること</th></tr>
+<tr><td>起動すると Windows の警告が出る</td><td>exe に署名がないためです。出どころが信頼できるなら、実行を選べます。</td></tr>
+<tr><td>2D で日付が思った日と違う</td><td>日付の決まり方の 3 番（更新時刻）になっていないか、<code>Log</code> の警告を見ます。日付の欄に書き直して、もう一度変換します。</td></tr>
+<tr><td>Convert Unconverted が「起点を記録した」とだけ言って変換しない</td><td>最初の 1 回の動きです。既にあるファイルは <code>Convert all .MBD files</code> にチェックして押すか、<code>Convert</code> で選びます。</td></tr>
+<tr><td>設定を替えたのに戻る</td><td><code>Channel Map</code> は <code>Save</code> を押すまで保存されません。</td></tr>
+<tr><td>変換が失敗する</td><td><code>Log</code> に原因が出ます。失敗しても、前の <code>.MES</code> は残ります。<code>.MBD</code> がコピーの途中でないか（MBDA2 の書き出しが終わっているか）も確かめます。</td></tr>
+<tr><td>設定を最初からやり直したい</td><td>MBD2MES を閉じて、exe の隣の <code>mbd2mes_config.json</code> と <code>channel_map.json</code> を別の場所へ移し、起動し直します（初期値から作り直されます）。</td></tr>
+</table>
+
+<h2>版の変更点</h2>
+<h3>0.3.0</h3>
+<ul>
+<li>変換中に進捗のダイアログ（<code>Converting...</code>）が出る。段ごとの %・経過時間と残りの目安・右の余白の絵。終わると自動で閉じる。</li>
+<li><code>Cancel</code>（ボタン・×・Esc）で変換を止められる。作りかけは残さず、既にある <code>.MES</code> は変えない。</li>
+<li>変換を別スレッドで回すようにし、変換中も画面が止まらない。</li>
+</ul>
+<h3>0.2.0</h3>
+<ul>
+<li>画面（GUI）・Channel Map（名前・単位・一次変換）・exe。</li>
+<li><code>Convert Unconverted</code>（まだ変換していない物を一度に）。</li>
+<li>イベントフォルダの候補（<code>Use This</code>）。</li>
+<li>記録の日付をファイル名から自動で決める。</li>
+</ul>
+<h3>0.1.0</h3>
+<ul>
+<li>最初の動く版（コマンドラインの変換器）。</li>
+</ul>
+</body>
+</html>

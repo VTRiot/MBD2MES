@@ -95,7 +95,7 @@ def test_cli_grows_the_map_file_and_version(tmp_path, monkeypatch):
     assert run([mbd, "-o", tmp_path / "o"], s).returncode == 0
     assert set(json.loads((s / "channel_map.json").read_text(encoding="utf-8"))["channels"]) == set(SEED["channels"])
     r = run(["--version"], s)
-    assert r.returncode == 0 and r.stdout.strip() == "MBD2MES v0.2.0 (dev)"
+    assert r.returncode == 0 and r.stdout.strip() == "MBD2MES v0.3.0 (dev)"
     f = tmp_path / "v.txt"
     assert run(["--version-file", f], s).returncode == 0 and f.read_text(encoding="utf-8").strip() == r.stdout.strip()
     assert cm.seed_path().is_file()
