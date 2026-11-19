@@ -28,10 +28,9 @@ from . import batch
 from . import channel_map as cmapmod
 from . import config as cfgmod
 from . import dates
-from . import jobs
 from . import map_rules
 from . import progress as prg
-from . import progress_dialog
+from .converter_progress import busy_animation, jobs, progress_dialog
 from . import race_env as renv
 from . import version
 
@@ -40,6 +39,14 @@ APP_USER_MODEL_ID = "MBD2MES.Converter"
 APP_TITLE = version.APP_NAME
 ICON_NAME = "MBD2MES.ico"
 ICON_REL_DIR = ("Pic", "ICON")  # 正本の置き場（リポ直下の Pic/ICON/MBD2MES.ico）。frozen では spec が _MEIPASS 直下へ同梱する
+GIF_ENV = "MBD2MES_BUSY_GIF"  # 絵を試すときの差し替え口（環境変数）。試験にも使う
+GIF_RELATIVE_PATH = ("Pic", "anim", "busy.gif")  # 開発起動: リポ直下からの相対（正本の置き場）
+GIF_FROZEN_NAME = "busy.gif"  # exe: dist_build/mbd2mes.spec が _MEIPASS 直下へ同梱する名前
+# 変換中のダイアログの右で動く GIF の場所（converter_progress.busy_animation が 環境変数 > exe の中 > 基準フォルダ の順に探す）
+GIF_LOCATION = busy_animation.GifLocation(env_var=GIF_ENV, base_dir=cfgmod.app_base_dir, relative_path=GIF_RELATIVE_PATH,
+                                          frozen_name=GIF_FROZEN_NAME)
+CLOSE_BLOCKED_NO_CANCEL_TEXT = "A conversion is running. Please wait until it finishes, then close the window."
+CLOSE_CONFIRM_TEXT = "A conversion is running (no progress window is shown). Stop the conversion?"
 SCALING_HINT = "Multiplier / Offset are applied after the MBD conversion (value x Multiplier + Offset)."
 
 
@@ -213,6 +220,9 @@ class MbdGui:
         self._busy_widgets: list = []
         self._saved_states: dict = {}
         self._dialog = None  # 変換中だけ出す進捗ダイアログ（FB03）
+        self._cancellable = False  # いま走っている仕事が Cancel できる変換か（ダイアログつきで始めた物）
+        self.min_show_s = progress_dialog.MIN_SHOW_S  # 試験が 0 にできる（ダイアログを開いてからの最短の表示）
+        self.dialog_place = None  # 試験・撮影は画面の外の座標を渡す
         self._job = jobs.JobRunner(root, self._on_progress, self._log)
 
         notebook = ttk.Notebook(root)
@@ -409,33 +419,62 @@ class MbdGui:
             self._dialog.update_progress(event)
 
     def _open_progress_dialog(self) -> None:
-        """変換の本体（Convert・一発変換の変換）のときだけ、モーダルの進捗ダイアログを出す。出せなくても変換は続ける（Cancel は無い）。"""
+        """変換の本体（Convert・一発変換の変換）のときだけ、モーダルの進捗ダイアログを出す。出せなくても変換は続ける（止める手段はメイン窓の ×＝止めるか聞く確認）。"""
         try:
-            self._dialog = progress_dialog.ProgressDialog(self.root, on_cancel=self._job.request_cancel)
+            self._dialog = progress_dialog.ProgressDialog(self.root, on_cancel=self._job.request_cancel, gif_location=GIF_LOCATION,
+                                                          place=self.dialog_place)
         except Exception as exc:  # noqa: BLE001 -- ダイアログの失敗で変換を止めない
             self._dialog = None
-            self._log(f"[WARN] The progress dialog could not be shown ({exc}); the conversion continues without it")
+            self._log(f"[WARN] The progress dialog could not be shown ({exc}); the conversion continues without it. "
+                      "Close this window to be asked whether to stop the conversion.")
 
     def _close_progress_dialog(self) -> None:
         dlg, self._dialog = self._dialog, None
         if dlg is not None:
             dlg.close()
 
-    def _start_job(self, work, on_done, status: str = "Starting...", dialog: bool = False) -> bool:
+    def _start_job(self, work, on_done, status: str = "Starting...", dialog: bool = False, stopped_of=None) -> bool:
         """work(emitter) を別スレッドで走らせる。dialog=True なら、モーダルの進捗ダイアログ（Cancel つき）を出す。終わったら、
-        ダイアログを閉じ、押せなくした部品を戻してから on_done(結果, 例外, 文面) を主スレッドで呼ぶ。始められなかったら False。"""
+        ダイアログを閉じ（成功は Done を見せてから。finish_then_close）、押せなくした部品を戻してから on_done(結果, 例外, 文面) を
+        主スレッドで呼ぶ。stopped_of(結果) は「実際に止めた結果か」を答える関数（真なら Done を待たずに閉じる。旗の有無では決めない）。
+        始められなかったら False。"""
         if self._busy or self._job.running:
             return False
 
         def done(result, exc, tb) -> None:
-            self._close_progress_dialog()  # 成功でも失敗でも、先に必ず閉じる
-            self._set_busy(False)  # 続けて、押せなくした部品を戻す
-            try:
-                on_done(result, exc, tb)
-            except Exception as exc2:  # noqa: BLE001 -- 後始末の中の失敗も画面に出す（windowed の exe ではログが唯一の手がかり）
-                self._report_job_error("Conversion", exc2, traceback.format_exc())
+            if self._job.poll_warning:
+                self._log(f"[WARN] {self._job.poll_warning}")
+
+            def finalize() -> None:
+                self._dialog = None  # ダイアログは閉じ終わった（finish_then_close の後）
+                self._cancellable = False
+                self._set_busy(False)  # 続けて、押せなくした部品を戻す
+                try:
+                    on_done(result, exc, tb)
+                except Exception as exc2:  # noqa: BLE001 -- 後始末の中の失敗も画面に出す（windowed の exe ではログが唯一の手がかり）
+                    self._report_job_error("Conversion", exc2, traceback.format_exc())
+
+            dlg = self._dialog
+            if dlg is None:
+                finalize()
+                return
+            stopped = False
+            if exc is None and stopped_of is not None:
+                try:
+                    stopped = bool(stopped_of(result))
+                except Exception:  # noqa: BLE001 -- 判定の失敗は「止めていない」として Done を見せる
+                    stopped = False
+            if exc is not None:
+                text, full = progress_dialog.DONE_WITH_ERRORS_TEXT, False
+            elif stopped:
+                text, full = progress_dialog.CANCELLED_TEXT, False
+            else:
+                text, full = progress_dialog.DONE_TEXT, True
+            # 実際に止めた結果は待たずに閉じる。それ以外は MIN_SHOW_S・DONE_HOLD_S まで Done を見せてから閉じる
+            dlg.finish_then_close(text, full, on_closed=finalize, min_show_s=0.0 if stopped else self.min_show_s)
 
         self._set_busy(True)
+        self._cancellable = dialog
         self._log(f"[INFO] {status}")
         if dialog:
             self._open_progress_dialog()
@@ -443,6 +482,7 @@ class MbdGui:
             self._job.start(work, done)
         except Exception:
             self._close_progress_dialog()
+            self._cancellable = False
             self._set_busy(False)
             raise
         return True
@@ -455,9 +495,28 @@ class MbdGui:
 
     def _on_close(self) -> None:
         """変換中は閉じさせない。公開の途中（既存の MES を退避してから新しい MES を置くまでの間）でプロセスが終わると、
-        既存の MES が最終の位置から消えたままになりうるため（Codex の FB02 レビュー [1]）。終わるのを待ってから閉じてもらう。"""
+        既存の MES が最終の位置から消えたままになりうるため（Codex の FB02 レビュー [1]）。
+          - ダイアログがある: 前に出して案内する（止める手段はダイアログの Cancel。案内の窓は出さず、前に出してログに書くだけ）
+          - Cancel できる変換なのにダイアログが出せなかった: 「変換を止めますか」を聞き、Yes のときだけ Cancel の旗を立てる（閉じない）
+          - Cancel の無い仕事（フォルダの走査）: 案内だけ"""
         if self._busy or self._job.running:
-            messagebox.showinfo(APP_TITLE, "A conversion is running. Please wait until it finishes, then close the window.")
+            dlg = self._dialog
+            if dlg is not None:
+                finished = bool(getattr(dlg, "finished", False))  # Done を見せている間（Cancel はもう効かない）
+                self._log("[INFO] The conversion has finished; this window can be closed in a moment." if finished
+                          else "[INFO] A conversion is running. Press Cancel in the progress window to stop it.")
+                try:
+                    dlg.lift()
+                except tk.TclError:
+                    pass
+                # 案内の窓（モーダル）は出さない: 開いている間に変換が終わると、結果の窓が重なってしまう（Codex の B19 レビュー 2/3）
+            elif self._cancellable:
+                job = self._job.cancel_event  # 聞いた時点の仕事の旗（聞いている間に仕事が終わっていたら、立てない）
+                if messagebox.askyesno(APP_TITLE, CLOSE_CONFIRM_TEXT) and self._job.running and self._job.cancel_event is job:
+                    self._job.request_cancel()
+                    self._log("[INFO] Cancel requested from the close confirmation.")
+            else:
+                messagebox.showinfo(APP_TITLE, CLOSE_BLOCKED_NO_CANCEL_TEXT)
             return
         self.root.destroy()
 
@@ -512,7 +571,8 @@ class MbdGui:
                 self._log("[WARN] Failed to save some channel map entries. Please re-save using the 'Save' button in the 'Channel Map' tab.")
             messagebox.showinfo(APP_TITLE, ac.outcome_text(outcome, len(paths)))
 
-        self._start_job(work, on_done, status="Starting the conversion...", dialog=True)
+        self._start_job(work, on_done, status="Starting the conversion...", dialog=True,
+                        stopped_of=lambda outcome: outcome.cancel_requested)
 
     def _replace_list(self, paths: list[Path]) -> None:
         self.selected_files.clear()
@@ -598,7 +658,8 @@ class MbdGui:
                     progress=emit.progress, cancel=emit.cancel)
 
             started = self._start_job(work, lambda report, exc2, tb2: self._after_batch(scan, report, exc2, tb2),
-                                      status="Starting the conversion...", dialog=True)
+                                      status="Starting the conversion...", dialog=True,
+                                      stopped_of=lambda report: report.cancel_requested)
         except Exception as exc3:  # noqa: BLE001
             self._report_job_error("Batch conversion", exc3, traceback.format_exc())
         finally:

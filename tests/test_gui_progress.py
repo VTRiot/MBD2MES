@@ -15,9 +15,10 @@ import pytest
 from conftest import fresh_settings
 
 from mbd2mes import app_convert as ac
-from mbd2mes import busy_animation as ba
+from mbd2mes.converter_progress import busy_animation as ba
 from mbd2mes import config as cfgmod
-from mbd2mes import gui, jobs
+from mbd2mes import gui
+from mbd2mes.converter_progress import jobs
 
 
 def _root():
@@ -38,7 +39,7 @@ def _root():
 def app(tmp_path, monkeypatch):
     fresh_settings(tmp_path, monkeypatch)
     monkeypatch.setattr(gui.renv, "detect_output_dir", lambda *a, **k: (None, "", "stub"))
-    monkeypatch.setenv(ba.GIF_ENV, str(tmp_path / "no_such.gif"))  # 既定では GIF なし
+    monkeypatch.setenv(gui.GIF_ENV, str(tmp_path / "no_such.gif"))  # 既定では GIF なし
     root = _root()
     a = gui.MbdGui(root)
     out = tmp_path / "out"
@@ -138,8 +139,8 @@ def test_the_window_cannot_be_closed_while_converting(app, tmp_path, monkeypatch
     destroyed = []
     monkeypatch.setattr(app.root, "destroy", lambda: destroyed.append(1))
     app._on_close()
-    assert destroyed == [] and "Please wait until it finishes" in shown["info"][-1][1]  # はいと答える道は無い（案内だけ）
-    assert shown["asked"] == []
+    assert destroyed == [] and shown["info"] == []  # はいと答える道は無い。案内の窓（モーダル）も出さない（ダイアログを前に出し、ログに書く）
+    assert shown["asked"] == [] and "Press Cancel in the progress window" in app.log_text.get("1.0", "end")
     gate.release.set()
     app.wait_idle()
     app._on_close()  # 変換していなければ、聞かずに閉じる
@@ -212,14 +213,14 @@ def test_a_missing_or_broken_gif_never_raises(app, tmp_path, payload):
 
 
 def test_gif_path_has_one_place_and_the_size_target_is_1_5_cm(app):
-    assert ba.GIF_RELATIVE_PATH == ("Pic", "anim", "busy.gif") and ba.GIF_SIZE_CM == 1.5
+    assert gui.GIF_RELATIVE_PATH == ("Pic", "anim", "busy.gif") and ba.GIF_SIZE_CM == 1.5
     assert ba.recommended_size_px(app.root) == round(app.root.winfo_fpixels("1.5c"))
     assert ba.recommended_size_px(app.root) > 20
 
 
 def test_default_gif_path_without_the_env_var(monkeypatch):
-    monkeypatch.delenv(ba.GIF_ENV, raising=False)
-    assert ba.resolve_gif_path() == cfgmod.app_base_dir() / "Pic" / "anim" / "busy.gif"
+    monkeypatch.delenv(gui.GIF_ENV, raising=False)
+    assert ba.resolve_gif_path(gui.GIF_LOCATION) == cfgmod.app_base_dir() / "Pic" / "anim" / "busy.gif"
 
 
 # ---------------------------------------------------------------- jobs.py（スレッドの橋）

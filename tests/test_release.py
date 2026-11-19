@@ -52,17 +52,17 @@ def make_zip_from(tmp: Path, files: dict[str, bytes], name: str = "z.zip") -> li
 
 # ---------------------------------------------------------------- 版
 def test_version_is_0_3_0():
-    assert version.APP_VERSION == "0.3.0"
-    assert version.format_version(False, None) == "MBD2MES v0.3.0 (dev)"
-    assert mr.parse_version_string("MBD2MES v0.3.0 (abc1234, built 2026-11-14)") == ("0.3.0", "abc1234", False, "2026-11-14")
-    assert mr.parse_version_string("MBD2MES v0.3.0 (abc1234+dirty, built 2026-11-14)")[2] is True
+    assert version.APP_VERSION == "0.3.1"
+    assert version.format_version(False, None) == "MBD2MES v0.3.1 (dev)"
+    assert mr.parse_version_string("MBD2MES v0.3.1 (abc1234, built 2026-11-14)") == ("0.3.1", "abc1234", False, "2026-11-14")
+    assert mr.parse_version_string("MBD2MES v0.3.1 (abc1234+dirty, built 2026-11-14)")[2] is True
     with pytest.raises(mr.ReleaseError):
-        mr.parse_version_string("MBD2MES v0.3.0 (unknown, built unknown)")
+        mr.parse_version_string("MBD2MES v0.3.1 (unknown, built unknown)")
 
 
 def test_a_dirty_exe_or_a_wrong_version_is_not_fresh():
     with pytest.raises(mr.ReleaseError, match="dirty"):
-        mr.check_exe_fresh("MBD2MES v0.3.0 (0000000+dirty, built 2026-11-14)")
+        mr.check_exe_fresh("MBD2MES v0.3.1 (0000000+dirty, built 2026-11-14)")
     with pytest.raises(mr.ReleaseError, match="APP_VERSION"):
         mr.check_exe_fresh("MBD2MES v0.2.0 (0000000, built 2026-11-14)")
 
@@ -99,7 +99,7 @@ def test_stage_and_make_zip_hold_only_the_allowed_files_and_are_reproducible(tmp
     mr.stage(sd1, exe)
     mr.stage(sd2, exe)
     commit = subprocess.run(["git", "log", "-1", "--format=%H"], cwd=str(ROOT), capture_output=True, text=True).stdout.strip()
-    z1, z2 = tmp_path / "MBD2MES_v0.3.0.zip", tmp_path / "again.zip"
+    z1, z2 = tmp_path / "MBD2MES_v0.3.1.zip", tmp_path / "again.zip"
     mr.make_zip(sd1, z1, commit)
     mr.make_zip(sd2, z2, commit)
     assert sha(z1) == sha(z2)  # 同じ入力から同じ ZIP
@@ -192,7 +192,7 @@ def fake_release(tmp: Path):
     exe = tmp / "src" / "mbd2mes.exe"
     exe.parent.mkdir()
     exe.write_bytes(b"MZ-new")
-    zp = tmp / "MBD2MES_v0.3.0.zip"
+    zp = tmp / "MBD2MES_v0.3.1.zip"
     zp.write_bytes(b"zipbytes")
     settings = tmp / "settings"
     settings.mkdir()
@@ -210,7 +210,7 @@ def test_publish_places_exe_readme_zip_and_copies_settings_with_equal_hashes(tmp
     assert sha(final / "mbd2mes.exe") == sha(exe) and sha(final / "README.html") == sha(ROOT / "docs" / "readme_ja.html")
     for n in ("mbd2mes_config.json", "channel_map.json"):
         assert sha(final / n) == sha(settings / n)
-    assert sorted(p.name for p in rel.iterdir()) == ["MBD2MES", "MBD2MES_v0.3.0.zip"] and sha(rel / "MBD2MES_v0.3.0.zip") == sha(zp)
+    assert sorted(p.name for p in rel.iterdir()) == ["MBD2MES", "MBD2MES_v0.3.1.zip"] and sha(rel / "MBD2MES_v0.3.1.zip") == sha(zp)
 
 
 def test_publish_does_not_overwrite_settings_already_in_the_final_folder_and_is_idempotent(tmp_path):
@@ -239,10 +239,10 @@ def test_publish_refuses_a_same_name_zip_with_different_content_and_changes_noth
     exe, zp, _s = fake_release(tmp_path)
     rel = tmp_path / "release"
     rel.mkdir()
-    (rel / "MBD2MES_v0.3.0.zip").write_bytes(b"other")
+    (rel / "MBD2MES_v0.3.1.zip").write_bytes(b"other")
     with pytest.raises(mr.ReleaseError, match="内容が違う"):
         mr.publish(zp, exe, rel, None)
-    assert not (rel / "MBD2MES" / "mbd2mes.exe").exists() and (rel / "MBD2MES_v0.3.0.zip").read_bytes() == b"other"
+    assert not (rel / "MBD2MES" / "mbd2mes.exe").exists() and (rel / "MBD2MES_v0.3.1.zip").read_bytes() == b"other"
 
 
 # ---------------------------------------------------------------- 道具の振る舞い
@@ -296,7 +296,7 @@ def test_make_release_uses_only_read_only_git_commands():
 
 
 def test_release_folder_is_git_ignored():
-    for rel in ("release/MBD2MES/mbd2mes.exe", "release/MBD2MES/README.html", "release/MBD2MES/mbd2mes_config.json", "release/MBD2MES_v0.3.0.zip"):
+    for rel in ("release/MBD2MES/mbd2mes.exe", "release/MBD2MES/README.html", "release/MBD2MES/mbd2mes_config.json", "release/MBD2MES_v0.3.1.zip"):
         r = subprocess.run(["git", "check-ignore", "-q", rel], cwd=str(ROOT))
         assert r.returncode == 0, rel
 

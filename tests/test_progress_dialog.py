@@ -17,12 +17,12 @@ from test_gui_progress import _root, make_gif, pump, stub_boxes
 
 from mbd2mes import app_convert as ac
 from mbd2mes import batch
-from mbd2mes import busy_animation as ba
+from mbd2mes.converter_progress import busy_animation as ba
 from mbd2mes import config as cfgmod
 from mbd2mes import convert as cv
 from mbd2mes import gui
 from mbd2mes import progress as prg
-from mbd2mes import progress_dialog as pd
+from mbd2mes.converter_progress import progress_dialog as pd
 
 PAST_NS = 946684800 * 10**9
 
@@ -31,7 +31,7 @@ PAST_NS = 946684800 * 10**9
 def app(tmp_path, monkeypatch):
     fresh_settings(tmp_path, monkeypatch)
     monkeypatch.setattr(gui.renv, "detect_output_dir", lambda *a, **k: (None, "", "stub"))
-    monkeypatch.setenv(ba.GIF_ENV, str(tmp_path / "no_such.gif"))  # 既定では GIF なし
+    monkeypatch.setenv(gui.GIF_ENV, str(tmp_path / "no_such.gif"))  # 既定では GIF なし
     root = _root()
     a = gui.MbdGui(root)
     out = tmp_path / "out"
@@ -310,7 +310,7 @@ def test_the_dialog_failing_to_open_does_not_stop_the_conversion(app, tmp_path, 
 
 
 def test_the_gif_plays_in_the_dialog_only_while_converting(app, tmp_path, monkeypatch):
-    monkeypatch.setenv(ba.GIF_ENV, str(make_gif(tmp_path / "busy.gif", frames=3, size=40)))
+    monkeypatch.setenv(gui.GIF_ENV, str(make_gif(tmp_path / "busy.gif", frames=3, size=40)))
     app.selected_files.append(ms.write(tmp_path / "a.MBD", course="a"))
     stub_boxes(monkeypatch)
     block = Block(monkeypatch, "a.MBD")

@@ -96,10 +96,10 @@ def test_git_calls_in_tools_are_read_only():
 def test_version_string_forms():
     from mbd2mes import version as v
 
-    assert v.format_version(False, None) == "MBD2MES v0.3.0 (dev)"
-    assert v.format_version(True, {"commit": "abc1234", "dirty": True, "built": "2026-11-14"}) == "MBD2MES v0.3.0 (abc1234+dirty, built 2026-11-14)"
-    assert v.format_version(True, {"commit": "abc1234", "dirty": False, "built": "2026-11-14"}) == "MBD2MES v0.3.0 (abc1234, built 2026-11-14)"
-    assert v.format_version(True, None) == "MBD2MES v0.3.0 (unknown, built unknown)"
+    assert v.format_version(False, None) == "MBD2MES v0.3.1 (dev)"
+    assert v.format_version(True, {"commit": "abc1234", "dirty": True, "built": "2026-11-14"}) == "MBD2MES v0.3.1 (abc1234+dirty, built 2026-11-14)"
+    assert v.format_version(True, {"commit": "abc1234", "dirty": False, "built": "2026-11-14"}) == "MBD2MES v0.3.1 (abc1234, built 2026-11-14)"
+    assert v.format_version(True, None) == "MBD2MES v0.3.1 (unknown, built unknown)"
     assert v.is_well_formed_version(v.APP_VERSION)
 
 
@@ -161,6 +161,6 @@ def test_spec_bundles_the_busy_gif_only_when_it_exists(tmp_path):
     (tmp_path / "Pic" / "anim" / "busy.gif").write_bytes(b"GIF89a")
     with_gif = {Path(s).name: d for s, d in _exec_spec(fake)["a"].kw["datas"]}
     assert with_gif["busy.gif"] == "." and set(with_gif) == set(without) | {"busy.gif"}
-    from mbd2mes import busy_animation
+    from mbd2mes import gui
 
-    assert busy_animation.GIF_FROZEN_NAME == "busy.gif" and busy_animation.GIF_RELATIVE_PATH[-1] == "busy.gif"
+    assert gui.GIF_LOCATION.frozen_name == "busy.gif" and gui.GIF_LOCATION.relative_path[-1] == "busy.gif"

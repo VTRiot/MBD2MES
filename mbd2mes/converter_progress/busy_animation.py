@@ -1,44 +1,74 @@
 # -*- coding: utf-8 -*-
-"""busy_animation.py -- 窓の端に置く、変換中だけ動く小さなアニメーション GIF（FB02）。
+"""busy_animation.py -- 窓の端に置く、変換中だけ動く小さなアニメーション GIF。tk 以外に依存しない。
 
-絵は別に作られ、らいおが選ぶ。ここは「置く場所」と「変換中だけ再生して止める仕組み」だけを持つ。
-  - GIF の場所は GIF_RELATIVE_PATH の 1 か所（開発起動: リポ直下からの相対。exe: spec が _MEIPASS 直下へ busy.gif として同梱する）。
-    環境変数 MBD2MES_BUSY_GIF があれば、そのファイルを使う（絵を試すときの差し替え口。試験にも使う）
-  - GIF が無い・読めない・コマが 0 のときは、何も出さず、何も起こさない（start/stop は何もしない）
+アプリ側で決めること（GifLocation で渡す。ProgressDialog の gif_location 引数）:
+  - env_var: 絵を試すときの差し替え口にする環境変数の名前（None なら使わない）。設定されていれば、そのファイルを使う（無くても。試験が GIF なしを作るのに使う）
+  - base_dir: 開発起動のときの基準フォルダ（Path か、Path を返す関数。None なら起動したスクリプトのあるフォルダ）
+  - relative_path: base_dir からの GIF の相対位置（既定 Pic/anim/busy.gif）
+  - frozen_name: exe の中（PyInstaller の _MEIPASS 直下）での名前（既定 busy.gif）。exe にこの名前で同梱する（spec の datas）。同梱を確かめる試験をアプリ側に置く
+  絵そのものは別に作られる。ここは「置く場所」と「変換中だけ再生して止める仕組み」だけを持つ。
+
+動き:
+  - GIF が無い・読めない・コマが 0 のときは、何も出さず、何も起こさない（start/stop は何もしない。attach も呼ばない = 余白を取らない）
   - 大きさは約 1.5 cm 四方（GIF_SIZE_CM。画面の dpi で何 px かは recommended_size_px）。素材の大きさが違っても、長い辺が約 1.5 cm に
     なる整数倍で縮める・拡げる（PhotoImage の zoom・subsample。ちょうどにはならないことがある）。透過は GIF の 1 色。数コマのループ
   - Tk の PhotoImage は GIF のコマごとの待ち時間を読めないので、コマの間隔は FRAME_MS の定数（全コマ同じ）
+
+踏んだ地雷:
+  - PhotoImage には必ず master を渡す。渡さないと、最初に作られた別の root に属して、窓が替わると「image doesn't exist」になる
+  - コマの後始末（PhotoImage の回収）が別スレッドで走ると「main thread is not in main loop」が出うる。release() は主スレッドで呼んでコマを手放す
+  - 壊れた GIF でコマを無限に読まない（MAX_FRAMES）
 """
 
 from __future__ import annotations
 
+import base64
 import math
 import os
 import sys
 import tkinter as tk
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Union
 
-from . import config as cfgmod
-
-GIF_RELATIVE_PATH = ("Pic", "anim", "busy.gif")  # アニメーション GIF の置き場（1 か所。差し替えはこのファイルを置き換える）
-GIF_FROZEN_NAME = "busy.gif"  # exe の中（_MEIPASS 直下）での名前。dist_build/mbd2mes.spec が同梱する
-GIF_ENV = "MBD2MES_BUSY_GIF"
+DEFAULT_RELATIVE_PATH = ("Pic", "anim", "busy.gif")  # 開発起動の GIF の置き場（base_dir からの相対）
+DEFAULT_FROZEN_NAME = "busy.gif"  # exe の中（_MEIPASS 直下）での名前
 GIF_SIZE_CM = 1.5  # 画面の端に置く大きさ（約 1.5 cm 四方）
 FRAME_MS = 120  # コマの間隔（ミリ秒）
 MAX_FRAMES = 200  # 読み込むコマの上限（壊れた GIF で止まらないように）
-MARGIN_PX = 6  # 窓の端からの余白
+GIF_SIGNATURE = b"GIF8"  # GIF87a・GIF89a の先頭（GIF の仕様）
+MARGIN_PX = 6  # 窓の端からの余白（attach を渡さないときの place の位置）
 
 
-def resolve_gif_path() -> Path:
-    """GIF の場所。環境変数 > exe の中 > リポ直下の Pic/anim/busy.gif。ファイルの有無は見ない。"""
-    override = os.environ.get(GIF_ENV)
-    if override:
-        return Path(override)
+@dataclass(frozen=True)
+class GifLocation:
+    """GIF の場所の決め方（アプリが渡す）。"""
+
+    env_var: str | None = None
+    base_dir: Union[Path, Callable[[], Path], None] = None
+    relative_path: tuple[str, ...] = DEFAULT_RELATIVE_PATH
+    frozen_name: str = DEFAULT_FROZEN_NAME
+
+
+def _default_base_dir() -> Path:
+    """起動したスクリプトのあるフォルダ（無ければ作業フォルダ）。"""
+    argv0 = sys.argv[0] if sys.argv and sys.argv[0] else ""
+    return Path(argv0).resolve().parent if argv0 else Path.cwd()
+
+
+def resolve_gif_path(location: GifLocation | None = None) -> Path:
+    """GIF の場所。環境変数 > exe の中（_MEIPASS 直下の frozen_name）> base_dir/relative_path。ファイルの有無は見ない。"""
+    loc = location or GifLocation()
+    if loc.env_var:
+        override = os.environ.get(loc.env_var)
+        if override:
+            return Path(override)
     if getattr(sys, "frozen", False):
         meipass = getattr(sys, "_MEIPASS", None)
         if meipass:
-            return Path(meipass) / GIF_FROZEN_NAME
-    return cfgmod.app_base_dir().joinpath(*GIF_RELATIVE_PATH)
+            return Path(meipass) / loc.frozen_name
+    base = loc.base_dir() if callable(loc.base_dir) else loc.base_dir
+    return Path(base if base is not None else _default_base_dir()).joinpath(*loc.relative_path)
 
 
 def recommended_size_px(root: tk.Misc) -> int:
@@ -81,9 +111,15 @@ def load_frames(path: Path, master: tk.Misc) -> list[tk.PhotoImage]:
     try:
         if not Path(path).is_file():
             return frames
+        # ファイルは 1 度だけ読み、コマはメモリから作る。コマごとにファイルを開くと、途中の 1 回の開き損ね（他のプロセスが一瞬
+        # 掴んでいる等）が「コマの終わり」と見分けられず、コマが黙って欠ける（試験の全件の実行でときどき起きた）
+        raw = Path(path).read_bytes()
+        if not raw.startswith(GIF_SIGNATURE):  # 空・GIF でない（Tk の data は空の文字でも空の画像を作ってしまうので、先に見る）
+            return frames
+        data = base64.b64encode(raw).decode("ascii")
         for i in range(MAX_FRAMES):
             try:
-                frames.append(tk.PhotoImage(master=master, file=str(path), format=f"gif -index {i}"))
+                frames.append(tk.PhotoImage(master=master, data=data, format=f"gif -index {i}"))
             except tk.TclError:
                 break  # コマの終わり（最初のコマで失敗なら frames は空 = 読めない GIF）
     except (OSError, tk.TclError, ValueError):
@@ -94,16 +130,16 @@ def load_frames(path: Path, master: tk.Misc) -> list[tk.PhotoImage]:
 class BusyAnimation:
     """GIF を master の中に置き、start() の間だけ再生し、stop() で止める（止めたら最初のコマを静止して見せる）。
 
-    attach(label): 置き方を決める関数（FB03: 進捗ダイアログの右の余白へ grid で置く）。None なら、master の右上の端へ place する
-    （FB02 の窓の端。今のメイン窓は使わない）。GIF が無ければ label は作らず、attach も呼ばない（余白を取らない）。"""
+    attach(label): 置き方を決める関数（進捗ダイアログは右の余白へ grid で置く）。None なら、root の右上の端へ place する。GIF が無ければ label は作らず、attach も呼ばない（余白を取らない）。"""
 
-    def __init__(self, root: tk.Misc, gif_path: Path | None = None, frame_ms: int = FRAME_MS, attach=None) -> None:
+    def __init__(self, root: tk.Misc, gif_path: Path | None = None, frame_ms: int = FRAME_MS, attach=None,
+                 location: GifLocation | None = None) -> None:
         self._root = root
         self._frame_ms = frame_ms
         self._index = 0
         self._after_id = None
         self.running = False
-        self.path = Path(gif_path) if gif_path is not None else resolve_gif_path()
+        self.path = Path(gif_path) if gif_path is not None else resolve_gif_path(location)
         self.frames = fit_frames(load_frames(self.path, root), recommended_size_px(root))  # 約 1.5 cm に合わせる（整数倍）
         self.label: tk.Label | None = None
         if self.frames:

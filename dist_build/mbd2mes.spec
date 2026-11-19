@@ -24,12 +24,12 @@ ICON_PATH = os.path.join(ROOT_DIR, "Pic", "ICON", "MBD2MES.ico")
 if not os.path.isfile(ICON_PATH):
     raise SystemExit(f"[mbd2mes.spec] icon not found: {ICON_PATH} (the source of truth is Pic\\ICON\\MBD2MES.ico; build stopped)")
 
-# 変換中に窓の端で動く GIF（FB02）。あれば busy.gif として _MEIPASS 直下へ同梱する（mbd2mes/busy_animation.py が読む）。
+# 変換中に窓の端で動く GIF（FB02）。あれば busy.gif として _MEIPASS 直下へ同梱する（mbd2mes/gui.py の GIF_LOCATION を通して mbd2mes/converter_progress/busy_animation.py が読む）。
 # 無ければ同梱せず、アプリは GIF なしで動く（絵はあとで置く）
 GIF_PATH = os.path.join(ROOT_DIR, "Pic", "anim", "busy.gif")
 GIF_DATAS = [(GIF_PATH, ".")] if os.path.isfile(GIF_PATH) else []
 if GIF_DATAS:
-    # PyInstaller は同梱の名前を元のファイル名のまま _MEIPASS 直下に置く。busy_animation の GIF_FROZEN_NAME と同じ名前（busy.gif）
+    # PyInstaller は同梱の名前を元のファイル名のまま _MEIPASS 直下に置く。gui.GIF_FROZEN_NAME と同じ名前（busy.gif）
     assert os.path.basename(GIF_PATH) == "busy.gif"
 
 a = Analysis(

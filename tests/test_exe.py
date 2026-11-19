@@ -50,7 +50,7 @@ def test_exe_version_matches_the_build_info(exe_copy):
     out = exe_copy.parent / "v.txt"
     assert run(exe_copy, "--version-file", out).returncode == 0
     text = out.read_text(encoding="utf-8").strip()
-    assert text.startswith("MBD2MES v0.3.0 (") and ", built " in text and "(dev)" not in text
+    assert text.startswith("MBD2MES v0.3.1 (") and ", built " in text and "(dev)" not in text
 
 
 def test_exe_embedded_icon_equals_the_ico(exe_copy):

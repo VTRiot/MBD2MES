@@ -43,13 +43,13 @@ RCZ2MES の commit `5b31da804d8c6c2ad116d0b6103edd199255666f`（`5b31da8`）か�
 | `mbd2mes/channel_map.py` | `C:\_Prog\ECU\Logger\RCZ2MES\channel_map.py` | `5b31da8` | `9ce4033f61fa8fef8bccb8c747a15dbf83f66ecb5479fb21e088282c94dc2d1b` | 改変（手直し） | `e23857bce439fd38a27464f3bc45db726d48893bf22d9d8f2cad25b70c4733c2` | 相対 import（`from . import config as cfgmod`・`from . import ddd_generator as gen`）・docstring の名前の置換。`output` の欄は持たない。ロジックは無改変 |
 | `mbd2mes/config.py` | `C:\_Prog\ECU\Logger\RCZ2MES\config.py` | `5b31da8` | `60457e0f9016394d896546f3e1ec35f24ccc5ade537fa5b8f6354f941795d4bc` | 改変（手直し） | `8b1ebfa056d2b0224db12d636e3bd957bb6c328a3145f6d594fd84cb2155be19` | 名前を MBD2MES に（seed・config・プローブ・`%LOCALAPPDATA%\MBD2MES`・環境変数 `MBD2MES_SETTINGS_DIR`）。`app_base_dir()` の非 frozen はパッケージの 1 つ上。`last_rcz_dir`→`last_mbd_dir`。`default_rcz_dir` を削除。FB01: 一発変換の起点（`normalize_checkpoint_key`・`get/set/clear_batch_checkpoint`）を写し直し、schema の再初期化でも起点を引き継ぐ |
 | `mbd2mes/map_rules.py` | `C:\_Prog\ECU\Logger\RCZ2MES\map_rules.py` | `5b31da8` | `ebe4089a894a7cde70d2e04e29e08e56d16199e00c337de669d39dfef034d913` | 改変（手直し） | `c82d7e5789c2e91af77f45ba9bd9b0d55e8933472c44f2ee8667b19f1b9f3aa4` | 保護する行・`make_apply_fn`（cp1252 で書けない候補を build_entries の前に外す）・`make_scaling_fn`・自動成長・`save_map_preserving_others`（新規）だけを残して書き直し。`output` の欄・`CAN_<id>` の移し替えを削除 |
-| `mbd2mes/gui.py` | `C:\_Prog\ECU\Logger\RCZ2MES\rcz2mes_gui.py` | `5b31da8` | `78118a3de9cb8effaba4d830a4c9c1c307fcaa24e06392fc0b3f7562d6158edb` | 改変（手直し） | `2e715a7e7808b8fb6ecc130282a8b3702f24d400169aa68a20b277a65f1baadc` | Convert・Channel Map・Other の 3 タブへ絞り、Output 列・RaceChrono Channel 列・マニュアルを削除。表の並び・検査・保存を Tk を使わない関数に分離。アイコンは `Pic\ICON`。FB01: 一発変換のボタンと確認の流れ（`_on_convert_unconverted`）・イベントフォルダ候補の行（Use This・Reload）・始まりのフォルダ `dialog_start_dir`（LD2MES の `_dialog_start_dir`）を写して足した |
+| `mbd2mes/gui.py` | `C:\_Prog\ECU\Logger\RCZ2MES\rcz2mes_gui.py` | `5b31da8` | `78118a3de9cb8effaba4d830a4c9c1c307fcaa24e06392fc0b3f7562d6158edb` | 改変（手直し） | `fc6d118a6a8505969af78e57be9d1c44e5a7f709d0c61a4f391ee5ecc047cc17` | Convert・Channel Map・Other の 3 タブへ絞り、Output 列・RaceChrono Channel 列・マニュアルを削除。表の並び・検査・保存を Tk を使わない関数に分離。アイコンは `Pic\ICON`。FB01: 一発変換のボタンと確認の流れ（`_on_convert_unconverted`）・イベントフォルダ候補の行（Use This・Reload）・始まりのフォルダ `dialog_start_dir`（LD2MES の `_dialog_start_dir`）を写して足した |
 | `mbd2mes/console_io.py` | `C:\_Prog\ECU\Logger\RCZ2MES\rcz2mes.py` | `5b31da8` | `97216ca2e363a7f731b5f8886cb57c984c94abea1b856fe94435528a6f7f80eb` | 改変（手直し） | `9b8c95c84335fcfc9d621fe869a6f7b85b3b107170765eac2c2774391274fdf9` | `_NullWriter`・`_stream_is_usable`・`ensure_console_for_cli`・`should_wait_for_enter`・`wait_for_enter` を切り出して写した（関数の中身は無改変） |
-| `mbd2mes/version.py` | `C:\_Prog\ECU\Logger\RCZ2MES\version_info.py` | `5b31da8` | `3dfeadf885cbced21e39e3baf2290352a27af701a008c8397bebb5383fa677a0` | 改変（手直し） | `2be1c794daca6a758d803109810e7874cfb9bc25552510564ad013307f576709` | `APP_NAME`・`APP_VERSION`・説明だけ |
+| `mbd2mes/version.py` | `C:\_Prog\ECU\Logger\RCZ2MES\version_info.py` | `5b31da8` | `3dfeadf885cbced21e39e3baf2290352a27af701a008c8397bebb5383fa677a0` | 改変（手直し） | `e7f28796336890a1426fca19a9c61f90bd6761349e8717483e3c17df4039131e` | `APP_NAME`・`APP_VERSION`・説明だけ |
 | `mbd2mes/race_env.py` | `C:\_Prog\ECU\Logger\RCZ2MES\race_env.py` | `5b31da8` | `4b465d87021abbc4cb6d22b491ff9d04fb11dc1a85adf31243596199cfc94b6b` | 改変（手直し） | `912c0827f38dddd4c332b540742a0c97f17a8e6be29f0185e4f947e9eadfe646` | FB01: 元の blob（RCZ2MES）は LD2MES から無改変で写された物。`ConfigParser(interpolation=None)`・`UnicodeDecodeError` を未検出として返す 2 点だけを直した版（`C:\_Prog\ECU\Car\LINK_LLGX2MES\race_env.py`・2026-10-18・元の SHA-256 は同じ `4b465d87…`・LF で保存）を、そのまま写した。% を含む値や cp1252 で読めないバイトで GUI が黙って止まる実害への直し（Codex の FB01 レビュー [1]・`docs/lessons_link.md`） |
 | `mbd2mes/batch.py` | `C:\_Prog\ECU\Logger\RCZ2MES\rcz_batch.py` | `5b31da8` | `ef1ba555dda6826b14693ff6322fff15a3659db1f76c7262f3c787110c608d85` | 改変（手直し） | `998241d305fb12ed867a92dd3b1196270f5943773fb950142cea033f366597ea` | FB01: 一発変換。`.rcz` -> `.MBD`・名前の置換。セッションか否かの見分けを MBD のマジックと大きさだけに（`rcz_reader` を使わない）・SHA-256 を 1 MiB ずつの逐次読みに・変換を `app_convert.convert_many` 経由に・`date_for`（入力ごとの記録日。HED の日付の裁定待ちの差し込み口）を足した。台帳・判定表・起点・確認の文言の考え方は無改変 |
 | `mbd2mes_app.py` | `C:\_Prog\ECU\Logger\RCZ2MES\rcz2mes.py` | `5b31da8` | `97216ca2e363a7f731b5f8886cb57c984c94abea1b856fe94435528a6f7f80eb` | 改変（手直し） | `6d53e99d9d2e3ee38dd28a46cb3ad91976d322cb266c06d8701d75aacf8a63d8` | 入口の分岐（引数なし = GUI、あり = CLI）と `run_cli` の骨格を MBD2MES の構成で書き直した（`rcz2mes.py` 末尾 `run_cli`・`__main__`） |
-| `dist_build/mbd2mes.spec` | `C:\_Prog\ECU\Logger\RCZ2MES\dist_build\rcz2mes.spec` | `5b31da8` | `10b70e863341bae8903763662052a2b1581e9371ce7816c719f0a6aaaf53b82e` | 改変（手直し） | `1673cc5746fd782757bbfca2cb09239e4af3913473ff262180432d4d4dd0fc71` | 入口・同梱（seed 2 つとアイコン）・名前。アイコンは `Pic\ICON\MBD2MES.ico` が無ければビルドを止める（既定のアイコンで黙って作らない） |
+| `dist_build/mbd2mes.spec` | `C:\_Prog\ECU\Logger\RCZ2MES\dist_build\rcz2mes.spec` | `5b31da8` | `10b70e863341bae8903763662052a2b1581e9371ce7816c719f0a6aaaf53b82e` | 改変（手直し） | `6ad71e7d9353fd515fcab51f555f83874b79042f05d7da3587e7dc1a6e65aa34` | 入口・同梱（seed 2 つとアイコン）・名前。アイコンは `Pic\ICON\MBD2MES.ico` が無ければビルドを止める（既定のアイコンで黙って作らない） |
 | `dist_build/build_exe.bat` | `C:\_Prog\ECU\Logger\RCZ2MES\dist_build\build_exe.bat` | `5b31da8` | `7982ef138d17003f091d1f25d5d7f1d35fe962a701b7295b829c5725a013d572` | 改変（手直し） | `b274553939f10602bf77cc1b8327ea31cb5637c36738f025deb13a606a1f3bdd` | 名前・アイコンの存在確認・exe のアイコンの照合の追加。ASCII + CRLF（元の blob は LF。作業ツリーは CRLF） |
 | `tools/write_build_info.py` | `C:\_Prog\ECU\Logger\RCZ2MES\tools\write_build_info.py` | `5b31da8` | `79eb91f3ce1c580a6fe08a6b56f2388ad37d94a2d86e5aae8f49593abb9b3fea` | 改変（手直し） | `122534dea6b87ec1b016dcfe47a4b03a753fcff5512e87b4bee5243b5a952801` | `DIRTY_PATHSPECS` を MBD2MES の spec に合わせた・説明だけ |
 | `tools/check_exe_version.py` | `C:\_Prog\ECU\Logger\RCZ2MES\tools\check_exe_version.py` | `5b31da8` | `86451588f6a6236b4cfa063c601f7488d0f3412bdc45f23dcf9e07e328c40d9d` | 改変（手直し） | `a9e596f402841e08340c3a29008efc1477a72e783483df1227390b6e6814a498` | exe の名前（`mbd2mes.exe`）・import 先・説明だけ |
@@ -61,9 +61,9 @@ RCZ2MES の commit `5b31da804d8c6c2ad116d0b6103edd199255666f`（`5b31da8`）か�
 |---|---|
 | `mbd2mes/app_convert.py` | GUI・CLI 共通の「複数本を順に変換する」層（`convert_many`）。1 件の失敗で止めない・上書きの確認・終了コード |
 | `mbd2mes/dates.py` | 記録の日付の決め方（FB01 の 4・案 C）: 明示の指定 > ファイル名（基準は標本の `26.11.8…`）> 更新時刻（警告）。写しではなく新規 |
-| `mbd2mes/progress.py`・`jobs.py`・`busy_animation.py` | FB02: 変換の進み具合（7 段・重み・全体の %）・変換を別スレッドで回す橋・GIF。写しではなく新規。`tools/measure_steps.py`（段の実測）も新規 |
+| `mbd2mes/progress.py` | FB02: 変換の進み具合（7 段・重み）。B19 で、段の名前と重みだけを持つ薄い形にした（計算の本体は下の converter_progress）。`jobs.py`・`busy_animation.py`（FB02）は B19 で削除（converter_progress へ）。`tools/measure_steps.py`（段の実測）も新規 |
 | `tools/make_release.py`・`tools/build_readme.py`・`docs/readme_ja.src.html` | REL01: 配布 ZIP（`MBD2MES_v<版>.zip` = mbd2mes.exe + README.html）と正式版のフォルダ `release/MBD2MES/` の作成。`make_release.py` は RCZ2MES の `tools/make_release.py`（bc558de）から、許可リスト・個人の語の針（exe の圧縮されたコードまで）・exe の鮮度・同じ入力から同じ ZIP・展開して検査し直す所を写して小さくした（省いた: 変更点の文書・マニュアル・ロックと old への退避・commit 名つきの ZIP 名。足した: 正式版への配置・設定の引き継ぎ）。README は新規 |
-| `mbd2mes/progress_dialog.py` | FB03: 変換中のモーダルの進捗ダイアログ（Cancel・GIF・経過時間と残りの目安）。写しではなく新規。`tools/render_dialog_snapshot.py`（ダイアログを画面の外で撮る）も新規 |
+| `mbd2mes/progress_dialog.py`（B19 で削除し converter_progress へ） | FB03: 変換中のモーダルの進捗ダイアログ（Cancel・GIF・経過時間と残りの目安）。`tools/render_dialog_snapshot.py`（ダイアログを画面の外で撮る）も新規 |
 | `channel_map.seed.json` | 対応表の初期値（恒等）。`tools/make_channel_map_seed.py` が標本から一度だけ生成した（下の記録） |
 | `tools/make_channel_map_seed.py`・`tools/copy_app_from_rcz2mes.py`・`tools/exe_icon.py` | seed の生成・元の blob の取得・exe のアイコンの照合 |
 
@@ -73,6 +73,20 @@ RCZ2MES の commit `5b31da804d8c6c2ad116d0b6103edd199255666f`（`5b31da8`）か�
 - 入力の SHA-256: `089d052133ccd87a9d9d525563ccf3be5955bb644b98c0c71174cd0031f9982f`（標本 1 本。`CLAUDE.local.md` の値と同じ）
 - 結果: 58 行（保護する GPS の 3 行 + 実際に書かれる 55 チャンネル）。生成物の SHA-256: `59cecf66fbce0a535e28ddf4676df2439299507657a2d3c7ddd1b559640699fb`
 - 別の出どころとの突き合わせ: `tests/test_settings.py::test_seed_rows_match_appendix_a`（`docs/mbd_format.md` 付録 A の件数 > 0 の行から GPSspd・GPS ブロックを除いた集合 = seed の名前の集合）
+
+## converter_progress（B19・v0.3.1）: Skill の版を無改変で写したもの
+
+変換中の進捗ダイアログ一式（進み・Cancel・Done・GIF・別スレッドの橋）。FB02・FB03 で自作した `jobs.py`・`progress_dialog.py`・`busy_animation.py` は、3 本の変換ソフトで実機の確認を通った Skill の版へ戻した（自作の 3 本は削除）。
+写した元は skill `tk-busy-progress-dialog`（`~/.claude/skills/tk-busy-progress-dialog/templates/converter_progress/`）。**手を入れずに**写した（写した先 = 元。`tests/test_converter_progress_provenance.py` が記録と現物の一致を照合する）。Skill が直ったときは、この SHA-256 と照合して差し替える。
+MBD2MES 固有の部分は `mbd2mes/progress.py`（段の名前と重みで `CONFIG` を作り、今までの公開名を結ぶ薄い形）と `mbd2mes/gui.py`（`GIF_LOCATION`・終わり方・× の扱い）にだけ置く。
+
+| 写した先 | 写した元 | 写した先の SHA-256 |
+|---|---|---|
+| `mbd2mes/converter_progress/__init__.py` | skill `tk-busy-progress-dialog` の `templates/converter_progress/__init__.py` | `0eb28cfde91fd4965dc706cf43df9a46fbf24d9cf8bd25befbc8d5dd9918d2ae` |
+| `mbd2mes/converter_progress/busy_animation.py` | skill `tk-busy-progress-dialog` の `templates/converter_progress/busy_animation.py` | `f3a766e24dbcda5cc8ab4962b9134a7d669933407bf965489c2924f3a0008ff8` |
+| `mbd2mes/converter_progress/jobs.py` | skill `tk-busy-progress-dialog` の `templates/converter_progress/jobs.py` | `f5c8de759d3ff900d73286c5c9ebf32fdda8dcb8bf6a8dbe305c99027b0ea30e` |
+| `mbd2mes/converter_progress/progress.py` | skill `tk-busy-progress-dialog` の `templates/converter_progress/progress.py` | `b7c97c042b6e8468bb1c0222fe1a13d82360bdd72b84364e3beb56fd8afa2fbe` |
+| `mbd2mes/converter_progress/progress_dialog.py` | skill `tk-busy-progress-dialog` の `templates/converter_progress/progress_dialog.py` | `9690e5b7959ec14a653576d0a3a2e99bad067e53e38d6c513a8835068cde91fc` |
 
 ## 追記の決まり
 

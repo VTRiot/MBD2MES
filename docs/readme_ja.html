@@ -23,7 +23,7 @@ blockquote { margin: 1em 0; padding: 0.6em 1em; border-left: 4px solid #2b6cb0; 
 </head>
 <body>
 <h1>MBD2MES</h1>
-<p class="ver">説明している版: MBD2MES v0.3.0</p>
+<p class="ver">説明している版: MBD2MES v0.3.1</p>
 
 <p>MBD2MES は、HRC の車両ロガー MBDA2 が書き出す <code>.MBD</code> ファイルを、2D Analyzer で開ける <code>.MES</code> フォルダに変換するソフトです。チャンネルのデータと、GPS の軌跡（2D の地図）が <code>.MES</code> に入ります。</p>
 
@@ -37,7 +37,7 @@ blockquote { margin: 1em 0; padding: 0.6em 1em; border-left: 4px solid #2b6cb0; 
 <h2>最初の変換</h2>
 <ol>
 <li><code>mbd2mes.exe</code> を、好きなフォルダ（例: <code>C:\MBD2MES</code>）に置きます。設定ファイルもこの exe の隣に作られるので、書き込める場所に置いてください。ZIP の中から直接動かさないでください。</li>
-<li><code>mbd2mes.exe</code> をダブルクリックします。画面が開き、タイトルバーに版の名前が出ます（<code>MBD2MES v0.3.0</code> を含みます）。</li>
+<li><code>mbd2mes.exe</code> をダブルクリックします。画面が開き、タイトルバーに版の名前が出ます（<code>MBD2MES v0.3.1</code> を含みます）。</li>
 <li>知らないプログラムとして Windows の警告が出ることがあります（この exe には署名がありません）。出どころが信頼できるなら、実行を選べます。</li>
 <li><code>Convert</code> タブの <code>Browse Files...</code> を押して <code>.MBD</code> を選びます（複数選べます）。</li>
 <li><code>Output Directory</code> を確かめます。2D のイベントフォルダでなければ <code>Change...</code> で選びます。</li>
@@ -124,6 +124,12 @@ blockquote { margin: 1em 0; padding: 0.6em 1em; border-left: 4px solid #2b6cb0; 
 </table>
 
 <h2>版の変更点</h2>
+<h3>0.3.1</h3>
+<ul>
+<li>変換が終わると、進捗のダイアログに <code>Done</code> が出てから閉じる（短い変換でも、最低 1 秒は表示する）。<code>Cancel</code> で止めたときは待たずに閉じる。</li>
+<li>進捗のダイアログの絵が、ときどき欠けることがあったのを直した。変換の結果（<code>.MES</code>）は 0.3.0 と同じ。</li>
+<li>進捗のダイアログが出せなかったときは、メイン窓の × で「変換を止めますか」と聞く。</li>
+</ul>
 <h3>0.3.0</h3>
 <ul>
 <li>変換中に進捗のダイアログ（<code>Converting...</code>）が出る。段ごとの %・経過時間と残りの目安・右の余白の絵。終わると自動で閉じる。</li>

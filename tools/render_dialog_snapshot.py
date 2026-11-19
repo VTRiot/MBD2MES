@@ -110,7 +110,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     os.environ["MBD2MES_SETTINGS_DIR"] = tempfile.mkdtemp(prefix="mbd2mes_snap_")
     from mbd2mes import progress as prg
-    from mbd2mes import progress_dialog as pd
+    from mbd2mes.converter_progress import progress_dialog as pd
 
     previous = user32.GetForegroundWindow()
     root = tk.Tk()
